@@ -12,12 +12,12 @@ O projeto cobre o fluxo desde a preservação e validação dos dados de origem 
 
 Uma operação de e-commerce precisa entender como os pedidos evoluem e se as entregas chegam até a previsão. Um painel sozinho não responde à pergunta de negócio: é preciso definir o grão, o denominador, as regras para datas incompletas e o que uma taxa baixa permite — ou não permite — concluir.
 
-### Perguntas respondidas
+## Escopo analítico do dashboard
 
-1. **Como pedidos e compradores únicos evoluem ao longo do tempo?** A série acompanha pedidos e pessoas identificadas por `customer_unique_id`; os meses parciais são sinalizados.
-2. **Como muda a composição dos pedidos por status?** A visualização empilhada em 100% permite comparar a participação mensal de cada status, com os status apresentados em português.
-3. **Qual é o desempenho geral das entregas?** O painel mostra pedidos elegíveis, pedidos excluídos por datas inconsistentes, prazo médio e percentual entregue até a previsão.
-4. **Em quais UFs vale investigar a pontualidade?** A comparação considera a taxa e o tamanho da amostra, sem atribuir diferenças a uma transportadora ou causa que a fonte não identifica.
+- **Evolução de pedidos e compradores:** série mensal de pedidos e de compradores identificados por `customer_unique_id`, com sinalização dos meses de cobertura parcial.
+- **Composição por status:** participação mensal dos status em gráfico empilhado em 100%; os rótulos da visualização são apresentados em português.
+- **Desempenho das entregas:** quantidade de pedidos elegíveis, registros excluídos por datas ausentes ou inconsistentes, prazo médio e percentual entregue até a previsão.
+- **Pontualidade por UF:** comparação da taxa de entrega no prazo junto ao tamanho de cada amostra. A visualização descreve diferenças observadas, sem atribuí-las a transportadoras ou causas que não estão identificadas na fonte.
 
 ## Leitura analítica do snapshot
 
