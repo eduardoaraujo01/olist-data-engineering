@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="560" viewBox="0 0 1440 560" role="img" aria-labelledby="title desc">
+  <title id="title">Visão de negócio do case Olist</title>
+  <desc id="desc">Resumo com quatro perguntas, métricas gerais de entrega e recortes estaduais usados para orientar investigação.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#101a2c"/><stop offset="1" stop-color="#18263b"/></linearGradient>
+    <style>
+      .title{font:700 29px 'Segoe UI',Arial,sans-serif;fill:#f3f7fc}.sub{font:15px 'Segoe UI',Arial,sans-serif;fill:#aebed1}
+      .num{font:700 30px 'Segoe UI',Arial,sans-serif;fill:#f5c96a}.label{font:14px 'Segoe UI',Arial,sans-serif;fill:#c2d0e0}
+      .head{font:700 18px 'Segoe UI',Arial,sans-serif;fill:#f3f7fc}.body{font:14px 'Segoe UI',Arial,sans-serif;fill:#c2d0e0}
+      .small{font:12px 'Segoe UI',Arial,sans-serif;fill:#9fb1c7}.uf{font:700 15px 'Segoe UI',Arial,sans-serif;fill:#f3f7fc}
+    </style>
+  </defs>
+  <rect width="1440" height="560" rx="24" fill="url(#bg)"/>
+  <text x="54" y="58" class="title">O case conecta qualidade de dados a perguntas de negócio</text>
+  <text x="54" y="88" class="sub">Pedidos e desempenho de entrega • Olist • V1 local</text>
+
+  <g transform="translate(54 120)">
+    <rect width="318" height="112" rx="16" fill="#203149" stroke="#3a536f"/>
+    <text x="22" y="47" class="num">99.441</text><text x="22" y="78" class="label">pedidos na fato — 1 linha por pedido</text>
+  </g>
+  <g transform="translate(390 120)">
+    <rect width="318" height="112" rx="16" fill="#203149" stroke="#3a536f"/>
+    <text x="22" y="47" class="num">95.082</text><text x="22" y="78" class="label">entregas elegíveis para medir prazo</text>
+  </g>
+  <g transform="translate(726 120)">
+    <rect width="318" height="112" rx="16" fill="#203149" stroke="#3a536f"/>
+    <text x="22" y="47" class="num">91,80%</text><text x="22" y="78" class="label">entregues até a previsão</text>
+  </g>
+  <g transform="translate(1062 120)">
+    <rect width="318" height="112" rx="16" fill="#203149" stroke="#3a536f"/>
+    <text x="22" y="47" class="num">12,62 dias</text><text x="22" y="78" class="label">prazo médio dos pedidos elegíveis</text>
+  </g>
+
+  <g transform="translate(54 256)">
+    <rect width="628" height="242" rx="18" fill="#19283c" stroke="#334b66"/>
+    <text x="24" y="39" class="head">Quatro perguntas para guiar a conversa</text>
+    <circle cx="34" cy="78" r="13" fill="#79d6d0"/><text x="34" y="83" text-anchor="middle" class="uf">1</text><text x="60" y="83" class="body">Como pedidos e compradores evoluem?</text>
+    <circle cx="34" cy="119" r="13" fill="#79d6d0"/><text x="34" y="124" text-anchor="middle" class="uf">2</text><text x="60" y="124" class="body">Como os status se distribuem por mês?</text>
+    <circle cx="34" cy="160" r="13" fill="#79d6d0"/><text x="34" y="165" text-anchor="middle" class="uf">3</text><text x="60" y="165" class="body">Qual é o desempenho geral das entregas?</text>
+    <circle cx="34" cy="201" r="13" fill="#79d6d0"/><text x="34" y="206" text-anchor="middle" class="uf">4</text><text x="60" y="206" class="body">Quais UFs merecem investigação?</text>
+  </g>
+  <g transform="translate(710 256)">
+    <rect width="670" height="242" rx="18" fill="#19283c" stroke="#334b66"/>
+    <text x="24" y="39" class="head">Sinal para investigação, não uma conclusão causal</text>
+    <text x="28" y="78" class="uf">RJ</text><rect x="78" y="62" width="310" height="22" rx="11" fill="#334b66"/><rect x="78" y="62" width="268" height="22" rx="11" fill="#f5c96a"/><text x="405" y="79" class="body">86,40% • n=12.210</text>
+    <text x="28" y="120" class="uf">MA</text><rect x="78" y="104" width="310" height="22" rx="11" fill="#334b66"/><rect x="78" y="104" width="248" height="22" rx="11" fill="#79d6d0"/><text x="405" y="121" class="body">79,97% • n=704</text>
+    <text x="28" y="162" class="uf">AL</text><rect x="78" y="146" width="310" height="22" rx="11" fill="#334b66"/><rect x="78" y="146" width="237" height="22" rx="11" fill="#79d6d0"/><text x="405" y="163" class="body">76,34% • n=393</text>
+    <text x="28" y="204" class="small">RJ: 5,4 p.p. abaixo do geral. Compare também o volume e valide as amostras.</text>
+    <text x="28" y="226" class="small">UF é a do cliente; a base não informa transportadora nem causa do atraso.</text>
+  </g>
+  <text x="54" y="532" class="small">1.396 pedidos entregues foram excluídos das métricas por datas ausentes ou cronologia inválida; seguem contabilizados na auditoria.</text>
+</svg>

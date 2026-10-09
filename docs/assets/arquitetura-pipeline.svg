@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="500" viewBox="0 0 1440 500" role="img" aria-labelledby="title desc">
+  <title id="title">Arquitetura local do pipeline Olist</title>
+  <desc id="desc">Fluxo dos CSVs públicos por ingestão, camadas MinIO raw, processed e curated, PostgreSQL analytics, consultas SQL e dashboard Metabase.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#101a2c"/><stop offset="1" stop-color="#18263b"/></linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#8fa8c7"/></marker>
+    <style>
+      .title{font:700 27px 'Segoe UI',Arial,sans-serif;fill:#f3f7fc}.sub{font:15px 'Segoe UI',Arial,sans-serif;fill:#aebed1}
+      .head{font:700 18px 'Segoe UI',Arial,sans-serif;fill:#f3f7fc}.body{font:14px 'Segoe UI',Arial,sans-serif;fill:#c2d0e0}
+      .tag{font:700 12px 'Segoe UI',Arial,sans-serif;fill:#0c1726;letter-spacing:.5px}.foot{font:14px 'Segoe UI',Arial,sans-serif;fill:#aebed1}
+    </style>
+  </defs>
+  <rect width="1440" height="500" rx="24" fill="url(#bg)"/>
+  <text x="56" y="58" class="title">Da origem à decisão, com rastreabilidade em cada camada</text>
+  <text x="56" y="87" class="sub">Primeira fatia vertical: pedidos e desempenho de entrega</text>
+
+  <g transform="translate(52 145)">
+    <rect width="174" height="220" rx="18" fill="#22344c" stroke="#3e5876"/>
+    <rect x="16" y="16" width="62" height="24" rx="12" fill="#f5c96a"/><text x="47" y="33" text-anchor="middle" class="tag">ORIGEM</text>
+    <text x="18" y="78" class="head">CSVs Olist</text>
+    <text x="18" y="111" class="body">9 arquivos públicos</text>
+    <text x="18" y="137" class="body">IDs preservados</text>
+    <text x="18" y="163" class="body">Originais intactos</text>
+    <text x="18" y="194" class="body">1,55 milhão de linhas</text>
+  </g>
+  <path d="M235 255 H266" stroke="#8fa8c7" stroke-width="3" marker-end="url(#arrow)"/>
+  <g transform="translate(277 145)">
+    <rect width="174" height="220" rx="18" fill="#203a4c" stroke="#3d7083"/>
+    <rect x="16" y="16" width="62" height="24" rx="12" fill="#79d6d0"/><text x="47" y="33" text-anchor="middle" class="tag">RAW</text>
+    <text x="18" y="78" class="head">Ingestão</text>
+    <text x="18" y="111" class="body">Python → MinIO</text>
+    <text x="18" y="137" class="body">Hashes e manifesto</text>
+    <text x="18" y="163" class="body">Reexecução segura</text>
+    <text x="18" y="194" class="body">Arquivo de origem</text>
+  </g>
+  <path d="M460 255 H491" stroke="#8fa8c7" stroke-width="3" marker-end="url(#arrow)"/>
+  <g transform="translate(502 145)">
+    <rect width="174" height="220" rx="18" fill="#203a4c" stroke="#3d7083"/>
+    <rect x="16" y="16" width="105" height="24" rx="12" fill="#79d6d0"/><text x="68" y="33" text-anchor="middle" class="tag">PROCESSED</text>
+    <text x="18" y="78" class="head">Preparação</text>
+    <text x="18" y="111" class="body">Tipos explícitos</text>
+    <text x="18" y="137" class="body">Parquet por tabela</text>
+    <text x="18" y="163" class="body">Qualidade contada</text>
+    <text x="18" y="194" class="body">Sem joins entre fatos</text>
+  </g>
+  <path d="M685 255 H716" stroke="#8fa8c7" stroke-width="3" marker-end="url(#arrow)"/>
+  <g transform="translate(727 145)">
+    <rect width="174" height="220" rx="18" fill="#29364d" stroke="#66709e"/>
+    <rect x="16" y="16" width="91" height="24" rx="12" fill="#b9b8ff"/><text x="62" y="33" text-anchor="middle" class="tag">CURATED</text>
+    <text x="18" y="78" class="head">Modelo</text>
+    <text x="18" y="111" class="body">fact_orders</text>
+    <text x="18" y="137" class="body">1 linha por pedido</text>
+    <text x="18" y="163" class="body">Dimensões de cliente,</text>
+    <text x="18" y="184" class="body">data e status</text>
+  </g>
+  <path d="M910 255 H941" stroke="#8fa8c7" stroke-width="3" marker-end="url(#arrow)"/>
+  <g transform="translate(952 145)">
+    <rect width="174" height="220" rx="18" fill="#3a3049" stroke="#805d9b"/>
+    <rect x="16" y="16" width="100" height="24" rx="12" fill="#e3b2fb"/><text x="66" y="33" text-anchor="middle" class="tag">WAREHOUSE</text>
+    <text x="18" y="78" class="head">PostgreSQL</text>
+    <text x="18" y="111" class="body">Schema analytics</text>
+    <text x="18" y="137" class="body">Chaves resolvidas</text>
+    <text x="18" y="163" class="body">Carga transacional</text>
+    <text x="18" y="194" class="body">Sem órfãos no snapshot</text>
+  </g>
+  <path d="M1135 255 H1166" stroke="#8fa8c7" stroke-width="3" marker-end="url(#arrow)"/>
+  <g transform="translate(1177 145)">
+    <rect width="210" height="220" rx="18" fill="#3c3524" stroke="#a68b4d"/>
+    <rect x="16" y="16" width="95" height="24" rx="12" fill="#f5c96a"/><text x="63" y="33" text-anchor="middle" class="tag">CONSUMO</text>
+    <text x="18" y="78" class="head">SQL + Metabase</text>
+    <text x="18" y="111" class="body">4 perguntas de negócio</text>
+    <text x="18" y="137" class="body">Indicadores definidos</text>
+    <text x="18" y="163" class="body">Qualidade e limites</text>
+    <text x="18" y="194" class="body">Leitura para decisão</text>
+  </g>
+  <text x="56" y="432" class="foot">Execução local com Docker Compose • Camadas preservam o grão • Anomalias ficam visíveis, não são descartadas silenciosamente</text>
+</svg>

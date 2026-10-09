@@ -1,0 +1,5 @@
+/.idea/
+/.venv/
+/data/source/*.csv
+/.env
+/docs/portfolio_spec.md
