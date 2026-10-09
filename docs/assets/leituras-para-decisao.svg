@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1440" height="430" viewBox="0 0 1440 430" role="img" aria-labelledby="title desc">
-  <title id="title">Como transformar o resultado de entregas em investigação</title>
-  <desc id="desc">Quatro etapas: medir somente entregas elegíveis, localizar UFs com taxas menores, conferir tamanho da amostra e buscar dados operacionais antes de decidir uma ação.</desc>
+  <title id="title">Escopo e leitura das métricas de entrega</title>
+  <desc id="desc">Síntese do denominador das métricas de entrega, percentual no prazo, recortes por UF, tamanho das amostras e limites de atribuição causal.</desc>
   <defs>
     <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#101a2c"/><stop offset="1" stop-color="#18263b"/></linearGradient>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#8fa8c7"/></marker>
@@ -12,39 +12,39 @@
     </style>
   </defs>
   <rect width="1440" height="430" rx="24" fill="url(#bg)"/>
-  <text x="54" y="57" class="title">Da métrica à próxima pergunta operacional</text>
-  <text x="54" y="86" class="sub">O dashboard aponta um recorte para investigar; a decisão depende de validação adicional.</text>
+  <text x="54" y="57" class="title">Entrega no prazo: base, resultado e recortes</text>
+  <text x="54" y="86" class="sub">A taxa considera pedidos entregues elegíveis; os recortes por UF têm amostras e limites explícitos.</text>
   <g transform="translate(54 124)">
     <rect width="292" height="220" rx="18" fill="#19283c" stroke="#334b66"/>
-    <text x="22" y="34" class="tag">01 • DEFINIR A BASE</text>
+    <text x="22" y="34" class="tag">01 • BASE DE CÁLCULO</text>
     <text x="22" y="77" class="big">95.082</text>
     <text x="22" y="105" class="body">pedidos entregues elegíveis</text>
-    <text x="22" y="146" class="body">Só entram datas completas e</text><text x="22" y="168" class="body">cronologia válida. Outros 1.396</text><text x="22" y="190" class="body">ficam na auditoria de qualidade.</text>
+    <text x="22" y="146" class="body">Entram pedidos com datas</text><text x="22" y="168" class="body">completas e cronologia válida.</text><text x="22" y="190" class="body">1.396 pedidos seguem na auditoria.</text>
   </g>
   <path d="M354 234 H380" stroke="#8fa8c7" stroke-width="3" marker-end="url(#arrow)"/>
   <g transform="translate(390 124)">
     <rect width="292" height="220" rx="18" fill="#19283c" stroke="#334b66"/>
-    <text x="22" y="34" class="tag">02 • OBSERVAR O SINAL</text>
+    <text x="22" y="34" class="tag">02 • RESULTADO GERAL</text>
     <text x="22" y="77" class="big">91,80%</text>
     <text x="22" y="105" class="body">entregas até a previsão</text>
-    <text x="22" y="146" class="body">Prazo médio: 12,62 dias.</text><text x="22" y="168" class="body">A taxa descreve pedidos elegíveis;</text><text x="22" y="190" class="body">não representa todos os pedidos.</text>
+    <text x="22" y="146" class="body">Prazo médio: 12,62 dias.</text><text x="22" y="168" class="body">Denominador: 95.082 pedidos</text><text x="22" y="190" class="body">entregues e elegíveis.</text>
   </g>
   <path d="M690 234 H716" stroke="#8fa8c7" stroke-width="3" marker-end="url(#arrow)"/>
   <g transform="translate(726 124)">
     <rect width="292" height="220" rx="18" fill="#19283c" stroke="#334b66"/>
-    <text x="22" y="34" class="tag">03 • PRIORIZAR INVESTIGAÇÃO</text>
+    <text x="22" y="34" class="tag">03 • COMPARAÇÃO REGIONAL</text>
     <text x="22" y="77" class="big">RJ • 86,40%</text>
     <text x="22" y="105" class="body">12.210 pedidos elegíveis</text>
-    <text x="22" y="146" class="body">5,4 p.p. abaixo do resultado geral.</text><text x="22" y="168" class="body">É um recorte com volume alto</text><text x="22" y="190" class="body">para começar a investigar.</text>
+    <text x="22" y="146" class="body">5,4 p.p. abaixo do resultado geral.</text><text x="22" y="168" class="body">A taxa vem acompanhada do</text><text x="22" y="190" class="body">tamanho da amostra.</text>
   </g>
   <path d="M1026 234 H1052" stroke="#8fa8c7" stroke-width="3" marker-end="url(#arrow)"/>
   <g transform="translate(1062 124)">
     <rect width="324" height="220" rx="18" fill="#3c3524" stroke="#a68b4d"/>
-    <text x="22" y="34" class="tag" style="fill:#f5c96a">04 • VALIDAR ANTES DE AGIR</text>
-    <text x="22" y="78" class="head">Cruzar com evidência</text>
+    <text x="22" y="34" class="tag" style="fill:#f5c96a">04 • AMOSTRAS E LIMITES</text>
+    <text x="22" y="78" class="head">Recortes adicionais</text>
     <text x="22" y="115" class="body">MA: 79,97% • n=704</text>
     <text x="22" y="139" class="body">AL: 76,34% • n=393</text>
-    <text x="22" y="177" class="body">Bases menores; conferir amostra,</text><text x="22" y="199" class="body">período e dados de transportadora.</text>
+    <text x="22" y="177" class="body">A UF é do cliente;</text><text x="22" y="199" class="body">a fonte não identifica transportadora</text>
   </g>
-  <text x="54" y="390" class="foot">Limite do case: há UF do cliente, mas não há identificação de transportadora nem evidência da causa dos atrasos.</text>
+  <text x="54" y="390" class="foot">Limite: a base não identifica transportadoras nem causas para as diferenças observadas.</text>
 </svg>

@@ -11,15 +11,15 @@
     </style>
   </defs>
   <rect width="1440" height="500" rx="24" fill="url(#bg)"/>
-  <text x="56" y="58" class="title">Da origem à decisão, com rastreabilidade em cada camada</text>
-  <text x="56" y="87" class="sub">Primeira fatia vertical: pedidos e desempenho de entrega</text>
+  <text x="56" y="58" class="title">Pipeline reproduzível, com rastreabilidade em cada camada</text>
+  <text x="56" y="87" class="sub">Fluxo local dos dados de pedidos até o consumo analítico</text>
 
   <g transform="translate(52 145)">
     <rect width="174" height="220" rx="18" fill="#22344c" stroke="#3e5876"/>
     <rect x="16" y="16" width="62" height="24" rx="12" fill="#f5c96a"/><text x="47" y="33" text-anchor="middle" class="tag">ORIGEM</text>
     <text x="18" y="78" class="head">CSVs Olist</text>
     <text x="18" y="111" class="body">9 arquivos públicos</text>
-    <text x="18" y="137" class="body">IDs preservados</text>
+    <text x="18" y="137" class="body">IDs de origem preservados</text>
     <text x="18" y="163" class="body">Originais intactos</text>
     <text x="18" y="194" class="body">1,55 milhão de linhas</text>
   </g>
@@ -30,7 +30,7 @@
     <text x="18" y="78" class="head">Ingestão</text>
     <text x="18" y="111" class="body">Python → MinIO</text>
     <text x="18" y="137" class="body">Hashes e manifesto</text>
-    <text x="18" y="163" class="body">Reexecução segura</text>
+    <text x="18" y="163" class="body">Reexecução idempotente</text>
     <text x="18" y="194" class="body">Arquivo de origem</text>
   </g>
   <path d="M460 255 H491" stroke="#8fa8c7" stroke-width="3" marker-end="url(#arrow)"/>
@@ -41,7 +41,7 @@
     <text x="18" y="111" class="body">Tipos explícitos</text>
     <text x="18" y="137" class="body">Parquet por tabela</text>
     <text x="18" y="163" class="body">Qualidade contada</text>
-    <text x="18" y="194" class="body">Sem joins entre fatos</text>
+    <text x="18" y="194" class="body">Sem junções entre fatos</text>
   </g>
   <path d="M685 255 H716" stroke="#8fa8c7" stroke-width="3" marker-end="url(#arrow)"/>
   <g transform="translate(727 145)">
@@ -60,7 +60,7 @@
     <text x="18" y="78" class="head">PostgreSQL</text>
     <text x="18" y="111" class="body">Schema analytics</text>
     <text x="18" y="137" class="body">Chaves resolvidas</text>
-    <text x="18" y="163" class="body">Carga transacional</text>
+    <text x="18" y="163" class="body">Carga em transação</text>
     <text x="18" y="194" class="body">Sem órfãos no snapshot</text>
   </g>
   <path d="M1135 255 H1166" stroke="#8fa8c7" stroke-width="3" marker-end="url(#arrow)"/>
@@ -68,10 +68,10 @@
     <rect width="210" height="220" rx="18" fill="#3c3524" stroke="#a68b4d"/>
     <rect x="16" y="16" width="95" height="24" rx="12" fill="#f5c96a"/><text x="63" y="33" text-anchor="middle" class="tag">CONSUMO</text>
     <text x="18" y="78" class="head">SQL + Metabase</text>
-    <text x="18" y="111" class="body">4 perguntas de negócio</text>
-    <text x="18" y="137" class="body">Indicadores definidos</text>
-    <text x="18" y="163" class="body">Qualidade e limites</text>
-    <text x="18" y="194" class="body">Leitura para decisão</text>
+    <text x="18" y="111" class="body">Consultas SQL versionadas</text>
+    <text x="18" y="137" class="body">Metabase local</text>
+    <text x="18" y="163" class="body">Limites documentados</text>
+    <text x="18" y="194" class="body">Filtro por data de compra</text>
   </g>
   <text x="56" y="432" class="foot">Execução local com Docker Compose • Camadas preservam o grão • Anomalias ficam visíveis, não são descartadas silenciosamente</text>
 </svg>

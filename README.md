@@ -4,7 +4,7 @@ Este repositório documenta um pipeline local de Engenharia de Dados que transfo
 
 O projeto cobre o fluxo desde a preservação e validação dos dados de origem até a modelagem dimensional, a carga repetível no warehouse e a construção de análises com definições, denominadores e limitações explícitos.
 
-![Resumo visual do case Olist: fluxo de dados e principais leituras](docs/assets/visao-do-case.svg)
+![Resumo do pipeline e da análise de entregas](docs/assets/visao-do-case.svg)
 
 > Os números apresentados são referências do snapshot analisado. Setembro e outubro de 2018 têm cobertura parcial. A imagem resume resultados reais do case; não é uma captura de tela do Metabase.
 
@@ -21,7 +21,7 @@ Uma operação de e-commerce precisa entender como os pedidos evoluem e se as en
 
 ## Leitura analítica do snapshot
 
-![Resumo das métricas de entrega e comparação por estado](docs/assets/leituras-para-decisao.svg)
+![Escopo, resultados e limites das métricas de entrega](docs/assets/leituras-para-decisao.svg)
 
 No snapshot analisado, 91,80% de 95.082 pedidos elegíveis chegaram até a data prevista, com prazo médio de 12,62 dias. Outros 1.396 pedidos entregues foram excluídos dessas métricas porque faltavam timestamps necessários ou a sequência cronológica era inválida; eles continuam visíveis na auditoria de qualidade.
 
@@ -29,7 +29,7 @@ O RJ é um ponto inicial para investigação: teve 12.210 pedidos elegíveis, po
 
 ## Arquitetura e fluxo
 
-![Arquitetura local do pipeline Olist](docs/assets/arquitetura-pipeline.svg)
+![Etapas do pipeline local de Engenharia de Dados](docs/assets/arquitetura-pipeline.svg)
 
 | Etapa | Responsabilidade | Evidência / cuidado |
 |---|---|---|
