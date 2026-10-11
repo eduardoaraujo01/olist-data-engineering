@@ -59,6 +59,22 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Configure MINIO_ROOT_PASSWORD in .env}
     command: ["python", "processing/build_processed.py"]
 
+  curated:
+    image: olist-python-jobs:local
+    profiles: ["jobs"]
+    build:
+      context: .
+      dockerfile: docker/ingestion/Dockerfile
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ENDPOINT_URL: http://minio:9000
+      MINIO_BUCKET: ${MINIO_BUCKET:-olist-data-lake}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Configure MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Configure MINIO_ROOT_PASSWORD in .env}
+    command: ["python", "processing/build_curated.py"]
+
   warehouse_load:
     image: olist-python-jobs:local
     profiles: ["jobs"]
@@ -93,6 +109,7 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./sql/curated/01_create_orders_model.sql:/docker-entrypoint-initdb.d/01_create_orders_model.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$$${POSTGRES_USER}\" -d \"$$${POSTGRES_DB}\""]
       interval: 10s

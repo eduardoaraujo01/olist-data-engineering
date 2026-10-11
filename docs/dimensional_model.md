@@ -1,6 +1,6 @@
 # Modelo dimensional — Olist
 
-**Status:** proposta de modelagem para o portfólio. As camadas raw e processed existem; curated, o esquema analítico no PostgreSQL e os dashboards ainda serão implementados.
+**Status:** implementado para a fatia de pedidos e entregas. Raw e processed preservam as nove tabelas de origem; curated gera as dimensões de cliente, data e status do pedido, além de `fact_orders`; PostgreSQL e o dashboard local do Metabase consomem essa primeira fatia analítica. Itens, pagamentos e avaliações permanecem como extensões documentadas, não como fatos implementados na V1.
 
 ## Objetivo do case
 

@@ -84,14 +84,38 @@ As caixas de texto **Cobertura dos dados** e **Leituras para decisão** são int
 
 ## Reproduzir e explorar
 
-O ambiente local usa Docker Compose. Configure as variáveis necessárias no arquivo `.env` com base no `.env.example` (o arquivo `.env` não deve ser versionado), inicie os serviços e siga as instruções por etapa. Os dados CSV de origem devem estar em `data/source/`; eles não são distribuídos neste repositório.
+O roteiro operacional completo está em [docs/curated.md](docs/curated.md). Ele explica como configurar o ambiente, executar cada etapa na ordem, aplicar o esquema dimensional e conferir os manifestos.
+
+Na raiz do projeto, no PowerShell, execute:
+
+```powershell
+Copy-Item .env.example .env
+# Substitua as senhas de desenvolvimento no .env antes de iniciar os serviços.
+docker compose up -d minio postgres
+```
+
+Crie no MinIO Console (`http://localhost:9001`) o bucket definido em `MINIO_BUCKET`, caso ele ainda não exista. Coloque os nove CSVs em `data/source/` e execute as etapas sequencialmente:
+
+```powershell
+docker compose --profile jobs run --build --rm ingestion
+docker compose --profile jobs run --build --rm processing
+docker compose --profile jobs run --build --rm curated
+docker compose exec -T postgres psql -U olist -d olist_analytics -v ON_ERROR_STOP=1 -f /docker-entrypoint-initdb.d/01_create_orders_model.sql
+docker compose --profile jobs run --build --rm warehouse_load
+```
+
+Os argumentos `olist` e `olist_analytics` correspondem aos valores padrão de `POSTGRES_USER` e `POSTGRES_DB`; ajuste-os se o `.env` usar outros valores. O arquivo `.env` e os CSVs locais não devem ser versionados.
+
+O contrato da execução, a identificação por hashes, a reexecução e os limites de concorrência estão em [docs/batch_contract.md](docs/batch_contract.md).
 
 Documentação e código:
 
 - [Contrato de dados](docs/data_contract.md)
+- [Contrato de lote](docs/batch_contract.md)
 - [Modelo dimensional](docs/dimensional_model.md)
 - [Ingestão](docs/ingestion.md)
 - [Processamento](docs/processed.md)
+- [Geração da camada curated](docs/curated.md)
 - [Warehouse](docs/warehouse.md)
 - [Definições e validação das consultas](docs/analytics_queries.md)
 - [Consultas analíticas SQL](sql/analytics/01_orders_delivery.sql)
