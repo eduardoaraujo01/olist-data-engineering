@@ -16,6 +16,12 @@ import boto3
 from botocore.client import Config
 from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 from dotenv import load_dotenv
+from quality_policy import (
+    QualityPolicyError,
+    evaluate_quality,
+    load_policy,
+    split_frame,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BUCKET_DEFAULT = "olist-data-lake"
@@ -266,8 +272,10 @@ def add_issue(
 
 def validate_primary_key(
         frame: pd.DataFrame,
+        table_name: str,
         key_columns: list[str],
         issues: list[dict[str, Any]],
+        row_masks: dict[tuple[str, str, str], list[bool]],
 ) -> dict[str, Any] | None:
     if not key_columns:
         return None
@@ -285,6 +293,10 @@ def validate_primary_key(
         duplicate_count,
         examples_as_strings(frame.loc[duplicate_mask], key_columns),
     )
+    if duplicate_count:
+        row_masks[(table_name, "duplicate_candidate_key", "+".join(key_columns))] = (
+            duplicate_mask.tolist()
+        )
     return {
         "columns": key_columns,
         "duplicate_rows": duplicate_count,
@@ -298,6 +310,7 @@ def validate_foreign_keys(
         foreign_keys: list[tuple[str, str, str]],
         known_keys: dict[str, set[str]],
         issues: list[dict[str, Any]],
+        row_masks: dict[tuple[str, str, str], list[bool]],
 ) -> list[dict[str, Any]]:
     results = []
     for column, parent_table, parent_column in foreign_keys:
@@ -316,6 +329,10 @@ def validate_foreign_keys(
             orphan_count,
             values.loc[orphan_mask].drop_duplicates().head(5).astype(str).tolist(),
         )
+        if orphan_count:
+            row_masks[(table_name, "orphan_foreign_key", column)] = (
+                orphan_mask.tolist()
+            )
         results.append({
             "column": column,
             "references": f"{parent_table}.{parent_column}",
@@ -390,7 +407,12 @@ def process_table(
         known_keys: dict[str, set[str]],
         translated_categories: set[str],
         temporary_dir: Path,
-) -> tuple[dict[str, Any], set[str] | None]:
+) -> tuple[
+    dict[str, Any],
+    set[str] | None,
+    dict[tuple[str, str, str], list[bool]],
+    Path,
+]:
     source_name = config["file"]
     raw_key = f"raw/batches/{batch_id}/{source_name}"
     output_key = f"processed/batches/{batch_id}/{config['name']}.parquet"
@@ -418,28 +440,67 @@ def process_table(
 
     input_rows = len(frame)
     issues: list[dict[str, Any]] = []
+    row_masks: dict[tuple[str, str, str], list[bool]] = {}
     date_results = parse_dates(frame, config["dates"], issues)
     postal_results = normalize_postal_codes(frame, config["postal_codes"], issues)
-    primary_key_result = validate_primary_key(frame, config["primary_key"], issues)
+    primary_key_result = validate_primary_key(
+        frame,
+        config["name"],
+        config["primary_key"],
+        issues,
+        row_masks,
+    )
     foreign_key_results = validate_foreign_keys(
-        frame, config["name"], config["foreign_keys"], known_keys, issues
+        frame,
+        config["name"],
+        config["foreign_keys"],
+        known_keys,
+        issues,
+        row_masks,
     )
 
     category_result = None
     if config["name"] == "products":
         categories = frame["product_category_name"]
-        unmatched = categories.notna() & ~categories.isin(translated_categories)
+
+        # Considera ausente tanto o valor nulo quanto uma string vazia.
+        missing_category = (
+                categories.isna()
+                | categories.str.strip().eq("").fillna(False)
+        )
+        missing_category_count = int(missing_category.sum())
+
+        # Categoria ausente e categoria sem tradução são achados distintos.
+        has_category = ~missing_category
+        unmatched = has_category & ~categories.isin(translated_categories)
         unmatched_count = int(unmatched.sum())
+
         add_issue(
             issues,
             "category_without_translation",
             "product_category_name",
             unmatched_count,
-            categories.loc[unmatched].drop_duplicates().head(5).astype(str).tolist(),
+            categories.loc[unmatched]
+            .drop_duplicates()
+            .head(5)
+            .astype(str)
+            .tolist(),
+            )
+
+        add_issue(
+            issues,
+            "product_category_missing",
+            "product_category_name",
+            missing_category_count,
+            examples_as_strings(
+                frame.loc[missing_category],
+                ["product_id", "product_category_name"],
+            ),
         )
+
         category_result = {
             "untranslated_rows": unmatched_count,
-            "rows_without_category": int(categories.isna().sum()),
+            "rows_without_category": missing_category_count,
         }
 
     nulls_by_column = {
@@ -460,24 +521,13 @@ def process_table(
             f"A contagem de linhas mudou em {source_name}: CSV={input_rows}, Parquet={parquet_rows}"
         )
 
-    output_hash = sha256_file(output_path)
-    client.upload_file(
-        str(output_path),
-        bucket,
-        output_key,
-        ExtraArgs={
-            "ContentType": "application/vnd.apache.parquet",
-            "Metadata": {"sha256": output_hash},
-        },
-    )
-
     report = {
         "batch_id": batch_id,
         "table": config["name"],
         "source_object": raw_key,
         "source_sha256": input_hash,
         "output_object": output_key,
-        "output_sha256": output_hash,
+        "output_sha256": None,
         "source_size_bytes": input_path.stat().st_size,
         "output_size_bytes": output_path.stat().st_size,
         "rows_read": input_rows,
@@ -506,12 +556,8 @@ def process_table(
             for value in frame["product_category_name"].dropna().tolist()
         }
 
-    print(
-        f"  {input_rows} linhas → {parquet_rows} linhas; "
-        f"{len(issues)} tipo(s) de problema sinalizado(s)"
-    )
     del frame
-    return report, reference_values
+    return report, reference_values, row_masks, output_path
 
 
 def write_manifest(
@@ -576,6 +622,7 @@ def main() -> int:
         "rules": {
             "raw_is_unchanged": True,
             "rows_are_not_removed": True,
+            "rows_are_quarantined": False,
             "joins_are_not_performed": True,
             "parquet_compression": "snappy",
         },
@@ -590,15 +637,21 @@ def main() -> int:
         client.head_bucket(Bucket=bucket)
         write_manifest(client, bucket, manifest_key, manifest)
 
+        quality_policy = load_policy(
+            PROJECT_ROOT / "config" / "data_quality_v2.json"
+        )
+
         all_reports = []
+        all_row_masks: dict[tuple[str, str, str], list[bool]] = {}
         known_keys: dict[str, set[str]] = {}
         translated_categories: set[str] = set()
+        quarantine_objects: list[dict[str, Any]] = []
 
         with tempfile.TemporaryDirectory(prefix="olist_processed_") as temp_name:
             temporary_dir = Path(temp_name)
 
             for config in TABLES:
-                report, reference_values = process_table(
+                report, reference_values, table_row_masks, local_output_path = process_table(
                     client,
                     bucket,
                     batch_id,
@@ -607,7 +660,9 @@ def main() -> int:
                     translated_categories,
                     temporary_dir,
                 )
+                report["_local_output_path"] = str(local_output_path)
                 all_reports.append(report)
+                all_row_masks.update(table_row_masks)
 
                 if config["name"] == "product_category_name_translation":
                     translated_categories = reference_values or set()
@@ -618,15 +673,165 @@ def main() -> int:
                 ):
                     known_keys[config["name"]] = reference_values
 
-        issue_count = sum(len(report["issues"]) for report in all_reports)
+            quality_result = evaluate_quality(
+                stage="processed",
+                reports=all_reports,
+                policy=quality_policy,
+                row_masks=all_row_masks,
+            )
+            quality_manifest = quality_result["manifest"]
+            manifest["quality"] = quality_manifest
+
+            if (
+                    quality_policy["mode"] == "enforce"
+                    and quality_manifest["decision"] == "blocked"
+            ):
+                raise QualityPolicyError(
+                    "A política de qualidade bloqueou o lote. "
+                    "Consulte quality.rules e quality.unmapped_findings "
+                    "no manifesto. Nenhum Parquet aprovado foi publicado."
+                )
+
+            for report in all_reports:
+                table_name = report["table"]
+                source_parquet = Path(report.pop("_local_output_path"))
+                frame = pd.read_parquet(source_parquet, engine="pyarrow")
+
+                if quality_policy["mode"] == "enforce":
+                    approved_frame, quarantined_frame = split_frame(
+                        frame,
+                        masks_by_rule=(
+                            quality_result["quarantine_masks_by_table"].get(
+                                table_name, {}
+                            )
+                        ),
+                        batch_id=batch_id,
+                        run_id=run_id,
+                        source_table=table_name,
+                    )
+                else:
+                    approved_frame = frame
+                    quarantined_frame = frame.iloc[0:0].copy()
+
+                quality_counts = quality_manifest["rows_by_table"][table_name]
+                if (
+                        len(approved_frame) + len(quarantined_frame)
+                        != report["rows_read"]
+                ):
+                    raise QualityPolicyError(
+                        f"Reconciliação inválida em {table_name}: "
+                        f"entrada={report['rows_read']}, "
+                        f"aprovadas={len(approved_frame)}, "
+                        f"quarentena={len(quarantined_frame)}."
+                    )
+                if (
+                        len(approved_frame) != quality_counts["approved_rows"]
+                        or len(quarantined_frame)
+                        != quality_counts["quarantined_distinct_rows"]
+                ):
+                    raise QualityPolicyError(
+                        f"As contagens da política não conferem com a "
+                        f"separação das linhas em {table_name}."
+                    )
+
+                approved_path = temporary_dir / f"{table_name}_approved.parquet"
+                approved_frame.to_parquet(
+                    approved_path,
+                    engine="pyarrow",
+                    compression="snappy",
+                    index=False,
+                )
+                approved_rows = int(
+                    parquet.ParquetFile(approved_path).metadata.num_rows
+                )
+                if approved_rows != len(approved_frame):
+                    raise RuntimeError(
+                        f"A contagem de linhas mudou ao gravar "
+                        f"{report['output_object']}: "
+                        f"DataFrame={len(approved_frame)}, "
+                        f"Parquet={approved_rows}."
+                    )
+
+                approved_hash = sha256_file(approved_path)
+                if len(quarantined_frame):
+                    quarantine_path = temporary_dir / f"{table_name}_quarantine.parquet"
+                    quarantined_frame.to_parquet(
+                        quarantine_path,
+                        engine="pyarrow",
+                        compression="snappy",
+                        index=False,
+                    )
+                    quarantine_key = (
+                        f"quarantine/batches/{batch_id}/"
+                        f"{table_name}/{run_id}.parquet"
+                    )
+                    quarantine_hash = sha256_file(quarantine_path)
+                    client.upload_file(
+                        str(quarantine_path),
+                        bucket,
+                        quarantine_key,
+                        ExtraArgs={
+                            "ContentType": "application/vnd.apache.parquet",
+                            "Metadata": {"sha256": quarantine_hash},
+                        },
+                    )
+                    quarantine_objects.append({
+                        "table": table_name,
+                        "object": quarantine_key,
+                        "rows": len(quarantined_frame),
+                        "sha256": quarantine_hash,
+                        "size_bytes": quarantine_path.stat().st_size,
+                    })
+                    quality_manifest["quarantine_objects"] = quarantine_objects
+                    manifest["rules"]["rows_are_not_removed"] = False
+                    manifest["rules"]["rows_are_quarantined"] = True
+
+                client.upload_file(
+                    str(approved_path),
+                    bucket,
+                    report["output_object"],
+                    ExtraArgs={
+                        "ContentType": "application/vnd.apache.parquet",
+                        "Metadata": {"sha256": approved_hash},
+                    },
+                )
+                report.update({
+                    "rows_written": approved_rows,
+                    "output_sha256": approved_hash,
+                    "output_size_bytes": approved_path.stat().st_size,
+                })
+                manifest["output_objects"].append(report["output_object"])
+
+                print(
+                    f"  {report['rows_read']} linhas → {approved_rows} aprovadas; "
+                    f"{len(quarantined_frame)} em quarentena; "
+                    f"{len(report['issues'])} tipo(s) de problema sinalizado(s)"
+                )
+                del frame, approved_frame, quarantined_frame
+
+            quality_manifest["quarantine_objects"] = quarantine_objects
+            manifest["rules"]["rows_are_not_removed"] = not bool(
+                quarantine_objects
+            )
+            manifest["rules"]["rows_are_quarantined"] = bool(
+                quarantine_objects
+            )
+
+        issue_count = sum(
+            len(report["issues"])
+            for report in all_reports
+        )
+
         manifest.update({
             "status": "succeeded",
             "finished_at_utc": datetime.now(timezone.utc).isoformat(),
             "input_objects": [
-                report["source_object"] for report in all_reports
+                report["source_object"]
+                for report in all_reports
             ],
             "output_objects": [
-                report["output_object"] for report in all_reports
+                report["output_object"]
+                for report in all_reports
             ],
             "rows": {
                 "input": {
@@ -641,6 +846,7 @@ def main() -> int:
             "tables": all_reports,
             "tables_processed": len(all_reports),
             "issue_types_signaled": issue_count,
+            "quality": quality_manifest,
         })
 
         write_manifest(client, bucket, manifest_key, manifest)

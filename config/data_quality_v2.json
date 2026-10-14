@@ -1,0 +1,204 @@
+{
+  "ruleset_version": "quality-v2-2",
+  "mode": "enforce",
+  "unmapped_rule_action": "fail_batch",
+  "rules": [
+    {
+      "rule_id": "key.primary_key_duplicate",
+      "stage": "processed",
+      "checks": [
+        "duplicate_candidate_key"
+      ],
+      "action": "quarantine_rows",
+      "severity": "error",
+      "max_quarantine_rate_pct": 0.01,
+      "tables": [
+        "customers",
+        "orders",
+        "product_category_name_translation",
+        "products",
+        "sellers",
+        "order_items",
+        "order_payments",
+        "order_reviews"
+      ]
+    },
+    {
+      "rule_id": "fk.transactional_orphan",
+      "stage": "processed",
+      "checks": [
+        "orphan_foreign_key"
+      ],
+      "action": "quarantine_rows",
+      "severity": "error",
+      "max_quarantine_rate_pct": 0.01,
+      "tables": [
+        "orders",
+        "order_items",
+        "order_payments",
+        "order_reviews"
+      ]
+    },
+    {
+      "rule_id": "postal.invalid_prefix",
+      "stage": "processed",
+      "checks": [
+        "invalid_postal_code_prefix"
+      ],
+      "action": "keep_and_warn",
+      "severity": "warning"
+    },
+    {
+      "rule_id": "date.unparseable",
+      "stage": "processed",
+      "checks": [
+        "unparseable_date"
+      ],
+      "action": "keep_and_warn",
+      "severity": "warning"
+    },
+    {
+      "rule_id": "category.without_translation",
+      "stage": "processed",
+      "checks": [
+        "category_without_translation"
+      ],
+      "tables": [
+        "products"
+      ],
+      "action": "keep_and_warn",
+      "severity": "warning"
+    },
+    {
+      "rule_id": "products.category_missing",
+      "stage": "processed",
+      "checks": [
+        "product_category_missing"
+      ],
+      "tables": [
+        "products"
+      ],
+      "action": "keep_and_warn",
+      "severity": "warning"
+    },
+    {
+      "rule_id": "curated.natural_key_missing",
+      "stage": "curated",
+      "checks": [
+        "missing_natural_key"
+      ],
+      "tables": [
+        "customers",
+        "orders"
+      ],
+      "action": "fail_batch",
+      "severity": "error",
+      "max_affected_rows": 0
+    },
+    {
+      "rule_id": "curated.natural_key_duplicate",
+      "stage": "curated",
+      "checks": [
+        "duplicate_natural_key"
+      ],
+      "tables": [
+        "customers",
+        "orders"
+      ],
+      "action": "fail_batch",
+      "severity": "error",
+      "max_affected_rows": 0
+    },
+    {
+      "rule_id": "curated.order_customer_reference_missing",
+      "stage": "curated",
+      "checks": [
+        "order_without_customer_id",
+        "customer_reference_not_found"
+      ],
+      "tables": [
+        "orders"
+      ],
+      "action": "fail_batch",
+      "severity": "error",
+      "max_affected_rows": 0
+    },
+    {
+      "rule_id": "orders.temporal_inversion",
+      "stage": "curated",
+      "checks": [
+        "timestamp_order_inversion"
+      ],
+      "tables": [
+        "orders"
+      ],
+      "action": "keep_and_warn",
+      "severity": "warning"
+    },
+    {
+      "rule_id": "orders.delivery_after_estimate",
+      "stage": "curated",
+      "checks": [
+        "delivery_after_estimate"
+      ],
+      "tables": [
+        "orders"
+      ],
+      "action": "keep_and_warn",
+      "severity": "warning"
+    },
+    {
+      "rule_id": "orders.unparseable_date",
+      "stage": "curated",
+      "checks": [
+        "unparseable_date"
+      ],
+      "tables": [
+        "orders"
+      ],
+      "action": "keep_and_warn",
+      "severity": "warning"
+    },
+    {
+      "rule_id": "orders.estimate_before_purchase",
+      "stage": "curated",
+      "checks": [
+        "estimated_delivery_before_purchase"
+      ],
+      "tables": [
+        "orders"
+      ],
+      "action": "keep_and_warn",
+      "severity": "warning"
+    }
+  ],
+  "table_limits": {
+    "customers": {
+      "max_quarantine_rate_pct": 0.01
+    },
+    "orders": {
+      "max_quarantine_rate_pct": 0.01
+    },
+    "product_category_name_translation": {
+      "max_quarantine_rate_pct": 0.01
+    },
+    "products": {
+      "max_quarantine_rate_pct": 0.01
+    },
+    "sellers": {
+      "max_quarantine_rate_pct": 0.01
+    },
+    "order_items": {
+      "max_quarantine_rate_pct": 0.01
+    },
+    "order_payments": {
+      "max_quarantine_rate_pct": 0.01
+    },
+    "order_reviews": {
+      "max_quarantine_rate_pct": 0.01
+    },
+    "geolocation": {
+      "max_quarantine_rate_pct": 0.01
+    }
+  }
+}

@@ -16,6 +16,7 @@ import pyarrow.parquet as parquet
 from botocore.client import Config
 from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 from dotenv import load_dotenv
+from quality_policy import evaluate_quality, load_policy
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -125,7 +126,7 @@ def key_issues(
     key_column: str,
     table_name: str,
     issues: list[dict[str, Any]],
-) -> list[str]:
+) -> None:
     missing_mask = frame[key_column].isna()
     duplicate_mask = frame[key_column].notna() & frame[key_column].duplicated(keep=False)
     add_issue(
@@ -142,26 +143,24 @@ def key_issues(
         frame.loc[duplicate_mask, key_column].drop_duplicates().head(5).astype(str).tolist(),
     )
 
-    blockers = []
-    if missing_mask.any():
-        blockers.append(f"{table_name}.{key_column} tem valores ausentes")
-    if duplicate_mask.any():
-        blockers.append(f"{table_name}.{key_column} não é único")
-    return blockers
 
-
-def parse_order_timestamps(orders: pd.DataFrame) -> pd.DataFrame:
+def parse_order_timestamps(
+    orders: pd.DataFrame,
+    issues: list[dict[str, Any]],
+) -> pd.DataFrame:
     parsed = orders.copy()
     for column in ORDER_DATE_COLUMNS:
         original = parsed[column]
         values = pd.to_datetime(original, errors="coerce")
         invalid_mask = original.notna() & values.isna()
-        if invalid_mask.any():
-            examples = original.loc[invalid_mask].drop_duplicates().head(5).astype(str).tolist()
-            raise ValueError(
-                f"Datas não interpretáveis em processed.{column}: {examples}. "
-                "Confira o manifesto da camada processed."
-            )
+        invalid_count = int(invalid_mask.sum())
+        add_issue(
+            issues,
+            "unparseable_date",
+            column,
+            invalid_count,
+            parsed.loc[invalid_mask, "order_id"].head(5).astype(str).tolist(),
+        )
         parsed[column] = values
     return parsed
 
@@ -230,30 +229,25 @@ def chronology_issues(orders: pd.DataFrame, issues: list[dict[str, Any]]) -> dic
             affected_rows = int(inversion_mask.sum())
             any_inversion |= inversion_mask
 
-            examples = []
-            for row in orders.loc[
-                inversion_mask, ["order_id", earlier_column, later_column]
-            ].head(5).to_dict(orient="records"):
-                examples.append({
-                    "order_id": str(row["order_id"]),
-                    "earlier_event": earlier_column,
-                    "earlier_timestamp": row[earlier_column].isoformat(sep=" "),
-                    "later_event": later_column,
-                    "later_timestamp": row[later_column].isoformat(sep=" "),
-                })
-
             pair_reports.append({
                 "expected_order": [earlier_column, later_column],
                 "violation": f"{later_column} < {earlier_column}",
                 "affected_rows": affected_rows,
             })
-            add_issue(
-                issues,
-                "timestamp_order_inversion",
-                f"{later_column} < {earlier_column}",
-                affected_rows,
-                examples,
-            )
+
+    inverted_order_examples = (
+        orders.loc[any_inversion, "order_id"]
+        .head(5)
+        .astype(str)
+        .tolist()
+    )
+    add_issue(
+        issues,
+        "timestamp_order_inversion",
+        "actual_event_timestamps",
+        int(any_inversion.sum()),
+        inverted_order_examples,
+    )
 
     estimated_before_purchase = (
         orders["order_estimated_delivery_date"].notna()
@@ -278,7 +272,7 @@ def build_fact_orders(
     orders: pd.DataFrame,
     customers: pd.DataFrame,
     issues: list[dict[str, Any]],
-) -> tuple[pd.DataFrame, dict[str, int]]:
+) -> tuple[pd.DataFrame, dict[str, int], dict[str, Any]]:
     customer_reference = customers.loc[:, ["customer_id"]].drop_duplicates()
     customer_reference["_customer_found"] = True
     before_join = len(orders)
@@ -323,6 +317,14 @@ def build_fact_orders(
     delivered_on_time = pd.Series(pd.NA, index=joined.index, dtype="boolean")
     delivered_on_time.loc[comparison_valid] = delivered.loc[comparison_valid].le(
         estimated.loc[comparison_valid]
+    )
+    late_delivery = comparison_valid & delivered.gt(estimated)
+    add_issue(
+        issues,
+        "delivery_after_estimate",
+        "order_delivered_customer_date/order_estimated_delivery_date",
+        int(late_delivery.sum()),
+        joined.loc[late_delivery, "order_id"].head(5).astype(str).tolist(),
     )
 
     fact = pd.DataFrame({
@@ -431,6 +433,8 @@ def main() -> int:
     run_id = uuid.uuid4().hex
     started_at = datetime.now(timezone.utc)
     issues: list[dict[str, Any]] = []
+    customer_issues: list[dict[str, Any]] = []
+    order_issues: list[dict[str, Any]] = []
     client = None
 
     source_objects = {
@@ -473,6 +477,9 @@ def main() -> int:
 
         with tempfile.TemporaryDirectory(prefix="olist_curated_") as temp_name:
             temporary_dir = Path(temp_name)
+            quality_policy = load_policy(
+                PROJECT_ROOT / "config" / "data_quality_v2.json"
+            )
 
             customers, customer_hash = read_processed_parquet(
                 client,
@@ -488,24 +495,19 @@ def main() -> int:
                 ORDER_COLUMNS,
                 temporary_dir,
             )
-            orders = parse_order_timestamps(orders)
+            orders = parse_order_timestamps(orders, order_issues)
 
-            blockers = []
-            blockers.extend(
-                key_issues(
-                    customers,
-                    "customer_id",
-                    "customers",
-                    issues,
-                )
+            key_issues(
+                customers,
+                "customer_id",
+                "customers",
+                customer_issues,
             )
-            blockers.extend(
-                key_issues(
-                    orders,
-                    "order_id",
-                    "orders",
-                    issues,
-                )
+            key_issues(
+                orders,
+                "order_id",
+                "orders",
+                order_issues,
             )
 
             sources = {
@@ -519,49 +521,59 @@ def main() -> int:
                 },
             }
 
-            if blockers:
-                finished_at = datetime.now(timezone.utc).isoformat()
-                manifest.update({
-                    "status": "failed",
-                    "finished_at_utc": finished_at,
-                    "sources": sources,
-                    "rows": {
-                        "input": {
-                            "customers": len(customers),
-                            "orders": len(orders),
-                        },
-                        "output": {},
-                    },
-                    "blockers": blockers,
-                    "error": {
-                        "type": "CuratedValidationError",
-                        "message": "As chaves naturais não passaram na validação.",
-                    },
-                })
-
-                manifest_key = upload_manifest(
-                    client,
-                    bucket,
-                    manifest,
-                    batch_id,
-                    run_id,
-                )
-                print(
-                    f"Validação interrompida. Manifesto: {manifest_key}",
-                    file=sys.stderr,
-                )
-                for blocker in blockers:
-                    print(f"- {blocker}", file=sys.stderr)
-                return 1
-
             dim_customer = build_dim_customer(customers)
             dim_order_status = build_dim_order_status(orders)
             dim_date = build_dim_date(orders)
             fact_orders, join_counts, chronology_summary = build_fact_orders(
                 orders,
                 customers,
-                issues,
+                order_issues,
             )
+            issues.extend(customer_issues)
+            issues.extend(order_issues)
+
+            quality_result = evaluate_quality(
+                stage="curated",
+                reports=[
+                    {
+                        "table": "customers",
+                        "rows_read": len(customers),
+                        "issues": customer_issues,
+                    },
+                    {
+                        "table": "orders",
+                        "rows_read": len(orders),
+                        "issues": order_issues,
+                    },
+                ],
+                policy=quality_policy,
+            )
+            quality_manifest = quality_result["manifest"]
+            manifest["quality"] = quality_manifest
+            manifest["sources"] = {
+                source_objects["customers"]: {
+                    "sha256": customer_hash,
+                    "rows": len(customers),
+                },
+                source_objects["orders"]: {
+                    "sha256": orders_hash,
+                    "rows": len(orders),
+                },
+            }
+            manifest["rows"]["input"] = {
+                "customers": len(customers),
+                "orders": len(orders),
+            }
+
+            if (
+                    quality_policy["mode"] == "enforce"
+                    and quality_manifest["decision"] == "blocked"
+            ):
+                raise CuratedValidationError(
+                    "A política de qualidade bloqueou a etapa curated. "
+                    "Consulte quality.rules e quality.unmapped_findings "
+                    "no manifesto. Nenhum Parquet curated foi publicado."
+                )
 
             frames = {
                 "dim_customer": dim_customer,
@@ -617,8 +629,8 @@ def main() -> int:
                         "one row per order_id within batch_id"
                     ),
                     "customer_join": (
-                        "many-to-one; missing references are retained "
-                        "and reported"
+                        "many-to-one; missing or unmatched customer "
+                        "references block in enforce"
                     ),
                     "delivery_days": (
                         "elapsed days between purchase and customer "
@@ -633,6 +645,8 @@ def main() -> int:
                         "maximum valid source date"
                     ),
                     "issues_remove_rows": False,
+                    "quality_mode": quality_policy["mode"],
+                    "quality_decision": quality_manifest["decision"],
                     "parquet_compression": "snappy",
                 },
                 "join_counts": join_counts,

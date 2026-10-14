@@ -84,7 +84,7 @@ As caixas de texto **Cobertura dos dados** e **Leituras para decisão** são int
 - A UF é a do cliente. Não há identificador de transportadora nem evidência de causa raiz.
 - Na análise do catálogo, algumas categorias não tinham tradução na tabela de referência; os valores de origem foram preservados em vez de traduzidos por suposição.
 - O dashboard não substitui investigação operacional nem estima custo de atraso; essas perguntas exigem dados adicionais e uma definição de negócio.
-- Na V2, avisos de qualidade são registrados nos manifestos, mas não bloqueiam o lote nesta entrega. Não há quarentena por registro nem limites de bloqueio configurados.
+- Na V2, a qualidade é avaliada em `processed` e `curated`. `processed` aplica quarentena por linha com limites por regra e por tabela; `curated` bloqueia chaves/referências inválidas e registra avisos cronológicos no manifesto.
 
 ## Documentação
 
@@ -92,6 +92,7 @@ As caixas de texto **Cobertura dos dados** e **Leituras para decisão** são int
 - [Contrato de lote da V1](docs/batch_contract.md)
 - [Contrato de lote da V2](docs/batch_contract_v2.md)
 - [Modelo dimensional](docs/dimensional_model.md)
+- [Qualidade de dados V2](docs/data_quality_v2.md)
 - [Ingestão](docs/ingestion.md)
 - [Processamento](docs/processed.md)
 - [Geração da camada curated](docs/curated.md)
@@ -176,6 +177,6 @@ Os manifestos registram o status, as contagens e as verificações de cada etapa
 
 ## Evoluções futuras
 
-A V1 concentra-se em pedidos e desempenho de entrega. A primeira entrega da V2 estabelece o processamento batch rastreável até o PostgreSQL. Evoluções futuras podem incluir orquestração com Airflow, transformações com dbt, regras de qualidade com limites e quarentena, governança e proteção de PII, streaming, CI/CD, Terraform e espelhamento de componentes para GCP.
+A V1 concentra-se em pedidos e desempenho de entrega. A primeira entrega da V2 estabelece o processamento batch rastreável até o PostgreSQL. A política V2 já aplica limites e quarentena em `processed` e decisões de qualidade em `curated`. Evoluções futuras podem incluir orquestração com Airflow, transformações com dbt, governança e proteção de PII, streaming, CI/CD, Terraform e espelhamento de componentes para GCP.
 
 A ampliação do modelo para itens, pagamentos e avaliações também é possível. Cada conjunto deve permanecer em uma fato com grão próprio; comparações entre fatos exigem agregação prévia a um grão comum.

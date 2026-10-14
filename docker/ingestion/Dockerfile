@@ -10,5 +10,7 @@ RUN python -m pip install --no-cache-dir -r requirements.txt
 COPY ingestion ./ingestion
 COPY processing ./processing
 COPY warehouse ./warehouse
+COPY config ./config
+
 CMD ["python", "ingestion/ingest_raw.py"]
 
