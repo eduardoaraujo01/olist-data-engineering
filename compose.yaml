@@ -96,7 +96,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-olist_analytics}
       POSTGRES_USER: ${POSTGRES_USER:-olist}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD in .env}
-    command: ["python", "warehouse/load_postgres.py"]
+    command: ["python", "warehouse/load_postgres_v2.py"]
 
   postgres:
     image: postgres:17.11-alpine3.24
@@ -110,6 +110,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./sql/curated/01_create_orders_model.sql:/docker-entrypoint-initdb.d/01_create_orders_model.sql:ro
+      - ./sql/v2/01_create_analytics_v2.sql:/docker-entrypoint-initdb.d/02_create_analytics_v2.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$$${POSTGRES_USER}\" -d \"$$${POSTGRES_DB}\""]
       interval: 10s

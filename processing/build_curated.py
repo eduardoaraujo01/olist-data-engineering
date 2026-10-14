@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import uuid
 import json
 import os
 import sys
@@ -358,9 +359,24 @@ def frame_summary(frame: pd.DataFrame) -> dict[str, Any]:
     }
 
 
-def upload_manifest(client, bucket: str, manifest: dict[str, Any], run_id: str) -> str:
-    manifest_key = f"curated/_manifests/{run_id}.json"
-    payload = json.dumps(manifest, ensure_ascii=False, indent=2, default=str).encode("utf-8")
+def upload_manifest(
+        client,
+        bucket: str,
+        manifest: dict[str, Any],
+        batch_id: str,
+        run_id: str,
+) -> str:
+    manifest_key = (
+        f"control/manifests/curated/"
+        f"{batch_id}/{run_id}.json"
+    )
+    payload = json.dumps(
+        manifest,
+        ensure_ascii=False,
+        indent=2,
+        default=str,
+    ).encode("utf-8")
+
     client.put_object(
         Bucket=bucket,
         Key=manifest_key,
@@ -395,49 +411,145 @@ def upload_parquet(client, bucket: str, frame: pd.DataFrame, object_key: str, pa
         "rows": output_rows,
     }
 
-
 def main() -> int:
     load_dotenv(PROJECT_ROOT / ".env")
     bucket = os.getenv("MINIO_BUCKET", BUCKET_DEFAULT)
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+    batch_id = os.getenv("BATCH_ID", "").strip()
+
+    if (
+            not batch_id.startswith("b_")
+            or len(batch_id) != 66
+            or any(character not in "0123456789abcdef" for character in batch_id[2:])
+    ):
+        print(
+            "Informe BATCH_ID válido. Use o identificador exibido "
+            "pela etapa de ingestão.",
+            file=sys.stderr,
+        )
+        return 1
+
+    run_id = uuid.uuid4().hex
+    started_at = datetime.now(timezone.utc)
     issues: list[dict[str, Any]] = []
+    client = None
+
     source_objects = {
-        "customers": "processed/olist_customers_dataset.parquet",
-        "orders": "processed/olist_orders_dataset.parquet",
+        "customers": (
+            f"processed/batches/{batch_id}/customers.parquet"
+        ),
+        "orders": (
+            f"processed/batches/{batch_id}/orders.parquet"
+        ),
+    }
+
+    manifest: dict[str, Any] = {
+        "contract_version": "2.0",
+        "batch_id": batch_id,
+        "run_id": run_id,
+        "stage": "curated",
+        "status": "running",
+        "started_at_utc": started_at.isoformat(),
+        "finished_at_utc": None,
+        "bucket": bucket,
+        "input_objects": list(source_objects.values()),
+        "output_objects": [],
+        "rows": {"input": {}, "output": {}},
+        "sources": {},
+        "outputs": {},
+        "issues": issues,
+        "error": None,
     }
 
     try:
         client = make_s3_client()
         client.head_bucket(Bucket=bucket)
+        manifest_key = upload_manifest(
+            client,
+            bucket,
+            manifest,
+            batch_id,
+            run_id,
+        )
+
         with tempfile.TemporaryDirectory(prefix="olist_curated_") as temp_name:
             temporary_dir = Path(temp_name)
+
             customers, customer_hash = read_processed_parquet(
-                client, bucket, source_objects["customers"], CUSTOMER_COLUMNS, temporary_dir
+                client,
+                bucket,
+                source_objects["customers"],
+                CUSTOMER_COLUMNS,
+                temporary_dir,
             )
             orders, orders_hash = read_processed_parquet(
-                client, bucket, source_objects["orders"], ORDER_COLUMNS, temporary_dir
+                client,
+                bucket,
+                source_objects["orders"],
+                ORDER_COLUMNS,
+                temporary_dir,
             )
             orders = parse_order_timestamps(orders)
 
             blockers = []
-            blockers.extend(key_issues(customers, "customer_id", "customers", issues))
-            blockers.extend(key_issues(orders, "order_id", "orders", issues))
+            blockers.extend(
+                key_issues(
+                    customers,
+                    "customer_id",
+                    "customers",
+                    issues,
+                )
+            )
+            blockers.extend(
+                key_issues(
+                    orders,
+                    "order_id",
+                    "orders",
+                    issues,
+                )
+            )
+
+            sources = {
+                source_objects["customers"]: {
+                    "sha256": customer_hash,
+                    "rows": len(customers),
+                },
+                source_objects["orders"]: {
+                    "sha256": orders_hash,
+                    "rows": len(orders),
+                },
+            }
+
             if blockers:
-                manifest = {
-                    "run_id": run_id,
-                    "processed_at_utc": datetime.now(timezone.utc).isoformat(),
-                    "status": "blocked_by_key_validation",
-                    "bucket": bucket,
-                    "sources": {
-                        source_objects["customers"]: {"sha256": customer_hash, "rows": len(customers)},
-                        source_objects["orders"]: {"sha256": orders_hash, "rows": len(orders)},
+                finished_at = datetime.now(timezone.utc).isoformat()
+                manifest.update({
+                    "status": "failed",
+                    "finished_at_utc": finished_at,
+                    "sources": sources,
+                    "rows": {
+                        "input": {
+                            "customers": len(customers),
+                            "orders": len(orders),
+                        },
+                        "output": {},
                     },
-                    "issues": issues,
                     "blockers": blockers,
-                    "outputs": {},
-                }
-                manifest_key = upload_manifest(client, bucket, manifest, run_id)
-                print(f"Validação interrompida. Manifesto: {manifest_key}", file=sys.stderr)
+                    "error": {
+                        "type": "CuratedValidationError",
+                        "message": "As chaves naturais não passaram na validação.",
+                    },
+                })
+
+                manifest_key = upload_manifest(
+                    client,
+                    bucket,
+                    manifest,
+                    batch_id,
+                    run_id,
+                )
+                print(
+                    f"Validação interrompida. Manifesto: {manifest_key}",
+                    file=sys.stderr,
+                )
                 for blocker in blockers:
                     print(f"- {blocker}", file=sys.stderr)
                 return 1
@@ -446,7 +558,9 @@ def main() -> int:
             dim_order_status = build_dim_order_status(orders)
             dim_date = build_dim_date(orders)
             fact_orders, join_counts, chronology_summary = build_fact_orders(
-                orders, customers, issues
+                orders,
+                customers,
+                issues,
             )
 
             frames = {
@@ -455,51 +569,98 @@ def main() -> int:
                 "dim_order_status": dim_order_status,
                 "fact_orders": fact_orders,
             }
+
             output_reports = {}
             output_paths = {
-                name: temporary_dir / f"{name}.parquet" for name in frames
+                name: temporary_dir / f"{name}.parquet"
+                for name in frames
             }
+
             for name, frame in frames.items():
+                object_key = (
+                    f"curated/batches/{batch_id}/{name}.parquet"
+                )
                 output_reports[name] = upload_parquet(
                     client,
                     bucket,
                     frame,
-                    f"curated/{name}.parquet",
+                    object_key,
                     output_paths[name],
                 )
 
-            manifest = {
-                "run_id": run_id,
-                "processed_at_utc": datetime.now(timezone.utc).isoformat(),
+            output_objects = [
+                report["object"]
+                for report in output_reports.values()
+            ]
+
+            finished_at = datetime.now(timezone.utc).isoformat()
+            manifest.update({
                 "status": "succeeded",
-                "bucket": bucket,
-                "sources": {
-                    source_objects["customers"]: {"sha256": customer_hash, "rows": len(customers)},
-                    source_objects["orders"]: {"sha256": orders_hash, "rows": len(orders)},
+                "finished_at_utc": finished_at,
+                "input_objects": list(source_objects.values()),
+                "output_objects": output_objects,
+                "rows": {
+                    "input": {
+                        "customers": len(customers),
+                        "orders": len(orders),
+                    },
+                    "output": {
+                        name: report["rows"]
+                        for name, report in output_reports.items()
+                    },
                 },
+                "sources": sources,
                 "rules": {
                     "source_layer": "processed",
                     "raw_and_processed_modified": False,
-                    "fact_orders_grain": "one row per order_id",
-                    "customer_join": "many-to-one; missing references are retained and reported",
-                    "delivery_days": "elapsed days between purchase and customer delivery, rounded to 2 decimals",
-                    "delivered_on_time": "comparison only when actual and estimated delivery timestamps exist",
-                    "dim_date_range": "continuous calendar days from minimum to maximum valid source date",
+                    "fact_orders_grain": (
+                        "one row per order_id within batch_id"
+                    ),
+                    "customer_join": (
+                        "many-to-one; missing references are retained "
+                        "and reported"
+                    ),
+                    "delivery_days": (
+                        "elapsed days between purchase and customer "
+                        "delivery, rounded to 2 decimals"
+                    ),
+                    "delivered_on_time": (
+                        "comparison only when actual and estimated "
+                        "delivery timestamps exist"
+                    ),
+                    "dim_date_range": (
+                        "continuous calendar days from minimum to "
+                        "maximum valid source date"
+                    ),
                     "issues_remove_rows": False,
                     "parquet_compression": "snappy",
                 },
                 "join_counts": join_counts,
                 "chronology": chronology_summary,
                 "outputs": output_reports,
-                "tables": {name: frame_summary(frame) for name, frame in frames.items()},
+                "tables": {
+                    name: frame_summary(frame)
+                    for name, frame in frames.items()
+                },
                 "issues": issues,
-            }
-            manifest_key = upload_manifest(client, bucket, manifest, run_id)
+            })
 
-        print("Camada curated gerada com sucesso:")
+            manifest_key = upload_manifest(
+                client,
+                bucket,
+                manifest,
+                batch_id,
+                run_id,
+            )
+
+        print(f"Camada curated do lote {batch_id} gerada com sucesso:")
         for name, report in output_reports.items():
-            print(f"  {name}: {report['rows']} linhas -> {report['object']}")
+            print(
+                f"  {name}: {report['rows']} linhas "
+                f"-> {report['object']}"
+            )
         print(f"Manifesto: {manifest_key}")
+
         if chronology_summary["orders_with_any_actual_timestamp_inversion"]:
             print(
                 "Pedidos com alguma inversão entre eventos reais: "
@@ -511,15 +672,44 @@ def main() -> int:
                         f"  {pair['violation']}: "
                         f"{pair['affected_rows']} pedidos"
                     )
+
         if issues:
-            print(f"Verificações com ocorrências registradas: {len(issues)}")
+            print(
+                f"Verificações com ocorrências registradas: {len(issues)}"
+            )
         else:
             print("Nenhum problema adicional encontrado nesta etapa.")
+
         return 0
-    except (BotoCoreError, ClientError, NoCredentialsError, OSError, ValueError, RuntimeError) as error:
+
+    except Exception as error:
+        manifest["status"] = "failed"
+        manifest["finished_at_utc"] = datetime.now(
+            timezone.utc
+        ).isoformat()
+        manifest["error"] = {
+            "type": type(error).__name__,
+            "message": str(error),
+        }
+
+        if client is not None:
+            try:
+                upload_manifest(
+                    client,
+                    bucket,
+                    manifest,
+                    batch_id,
+                    run_id,
+                )
+            except Exception as manifest_error:
+                print(
+                    "Também não foi possível atualizar o manifesto: "
+                    f"{manifest_error}",
+                    file=sys.stderr,
+                )
+
         print(f"Falha ao gerar curated: {error}", file=sys.stderr)
         return 1
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

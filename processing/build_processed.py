@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import uuid
 import json
 import os
 import sys
@@ -15,7 +16,6 @@ import boto3
 from botocore.client import Config
 from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 from dotenv import load_dotenv
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BUCKET_DEFAULT = "olist-data-lake"
@@ -249,11 +249,11 @@ def make_s3_client():
 
 
 def add_issue(
-    issues: list[dict[str, Any]],
-    check: str,
-    column: str,
-    count: int,
-    examples: list[Any] | None = None,
+        issues: list[dict[str, Any]],
+        check: str,
+        column: str,
+        count: int,
+        examples: list[Any] | None = None,
 ) -> None:
     if count:
         issues.append({
@@ -265,9 +265,9 @@ def add_issue(
 
 
 def validate_primary_key(
-    frame: pd.DataFrame,
-    key_columns: list[str],
-    issues: list[dict[str, Any]],
+        frame: pd.DataFrame,
+        key_columns: list[str],
+        issues: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
     if not key_columns:
         return None
@@ -293,11 +293,11 @@ def validate_primary_key(
 
 
 def validate_foreign_keys(
-    frame: pd.DataFrame,
-    table_name: str,
-    foreign_keys: list[tuple[str, str, str]],
-    known_keys: dict[str, set[str]],
-    issues: list[dict[str, Any]],
+        frame: pd.DataFrame,
+        table_name: str,
+        foreign_keys: list[tuple[str, str, str]],
+        known_keys: dict[str, set[str]],
+        issues: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     results = []
     for column, parent_table, parent_column in foreign_keys:
@@ -326,9 +326,9 @@ def validate_foreign_keys(
 
 
 def normalize_postal_codes(
-    frame: pd.DataFrame,
-    columns: list[str],
-    issues: list[dict[str, Any]],
+        frame: pd.DataFrame,
+        columns: list[str],
+        issues: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     results = []
     for column in columns:
@@ -355,9 +355,9 @@ def normalize_postal_codes(
 
 
 def parse_dates(
-    frame: pd.DataFrame,
-    columns: list[str],
-    issues: list[dict[str, Any]],
+        frame: pd.DataFrame,
+        columns: list[str],
+        issues: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     results = []
     for column in columns:
@@ -383,16 +383,17 @@ def parse_dates(
 
 
 def process_table(
-    client,
-    bucket: str,
-    config: dict[str, Any],
-    known_keys: dict[str, set[str]],
-    translated_categories: set[str],
-    temporary_dir: Path,
+        client,
+        bucket: str,
+        batch_id: str,
+        config: dict[str, Any],
+        known_keys: dict[str, set[str]],
+        translated_categories: set[str],
+        temporary_dir: Path,
 ) -> tuple[dict[str, Any], set[str] | None]:
     source_name = config["file"]
-    raw_key = f"raw/{source_name}"
-    output_key = f"processed/{Path(source_name).stem}.parquet"
+    raw_key = f"raw/batches/{batch_id}/{source_name}"
+    output_key = f"processed/batches/{batch_id}/{config['name']}.parquet"
     input_path = temporary_dir / source_name
     output_path = temporary_dir / f"{config['name']}.parquet"
 
@@ -471,6 +472,7 @@ def process_table(
     )
 
     report = {
+        "batch_id": batch_id,
         "table": config["name"],
         "source_object": raw_key,
         "source_sha256": input_hash,
@@ -512,13 +514,81 @@ def process_table(
     return report, reference_values
 
 
+def write_manifest(
+        client,
+        bucket: str,
+        object_key: str,
+        manifest: dict[str, Any],
+) -> None:
+    body = json.dumps(
+        manifest,
+        ensure_ascii=False,
+        indent=2,
+        default=str,
+    ).encode("utf-8")
+
+    client.put_object(
+        Bucket=bucket,
+        Key=object_key,
+        Body=body,
+        ContentType="application/json; charset=utf-8",
+    )
+
 def main() -> int:
     load_dotenv(PROJECT_ROOT / ".env")
     bucket = os.getenv("MINIO_BUCKET", BUCKET_DEFAULT)
+    batch_id = os.getenv("BATCH_ID", "").strip()
+
+    if (
+            not batch_id.startswith("b_")
+            or len(batch_id) != 66
+            or any(character not in "0123456789abcdef" for character in batch_id[2:])
+    ):
+        print(
+            "Informe BATCH_ID válido. Use o identificador exibido "
+            "pela etapa de ingestão.",
+            file=sys.stderr,
+        )
+        return 1
+
+    run_id = uuid.uuid4().hex
+    started_at = datetime.now(timezone.utc)
+    manifest_key = (
+        f"control/manifests/processing/"
+        f"{batch_id}/{run_id}.json"
+    )
+    client = None
+
+    manifest: dict[str, Any] = {
+        "contract_version": "2.0",
+        "batch_id": batch_id,
+        "run_id": run_id,
+        "stage": "processing",
+        "status": "running",
+        "started_at_utc": started_at.isoformat(),
+        "finished_at_utc": None,
+        "bucket": bucket,
+        "input_prefix": f"raw/batches/{batch_id}/",
+        "output_prefix": f"processed/batches/{batch_id}/",
+        "input_objects": [],
+        "output_objects": [],
+        "rows": {"input": {}, "output": {}},
+        "rules": {
+            "raw_is_unchanged": True,
+            "rows_are_not_removed": True,
+            "joins_are_not_performed": True,
+            "parquet_compression": "snappy",
+        },
+        "tables": [],
+        "tables_processed": 0,
+        "issue_types_signaled": 0,
+        "error": None,
+    }
 
     try:
         client = make_s3_client()
         client.head_bucket(Bucket=bucket)
+        write_manifest(client, bucket, manifest_key, manifest)
 
         all_reports = []
         known_keys: dict[str, set[str]] = {}
@@ -526,66 +596,89 @@ def main() -> int:
 
         with tempfile.TemporaryDirectory(prefix="olist_processed_") as temp_name:
             temporary_dir = Path(temp_name)
+
             for config in TABLES:
                 report, reference_values = process_table(
                     client,
                     bucket,
+                    batch_id,
                     config,
                     known_keys,
                     translated_categories,
                     temporary_dir,
                 )
                 all_reports.append(report)
+
                 if config["name"] == "product_category_name_translation":
                     translated_categories = reference_values or set()
-                if reference_values is not None and config["name"] != "product_category_name_translation":
+
+                if (
+                        reference_values is not None
+                        and config["name"] != "product_category_name_translation"
+                ):
                     known_keys[config["name"]] = reference_values
 
-        run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
         issue_count = sum(len(report["issues"]) for report in all_reports)
-        manifest = {
-            "run_id": run_id,
-            "processed_at_utc": datetime.now(timezone.utc).isoformat(),
-            "bucket": bucket,
-            "rules": {
-                "raw_is_unchanged": True,
-                "rows_are_not_removed": True,
-                "joins_are_not_performed": True,
-                "parquet_compression": "snappy",
+        manifest.update({
+            "status": "succeeded",
+            "finished_at_utc": datetime.now(timezone.utc).isoformat(),
+            "input_objects": [
+                report["source_object"] for report in all_reports
+            ],
+            "output_objects": [
+                report["output_object"] for report in all_reports
+            ],
+            "rows": {
+                "input": {
+                    report["table"]: report["rows_read"]
+                    for report in all_reports
+                },
+                "output": {
+                    report["table"]: report["rows_written"]
+                    for report in all_reports
+                },
             },
             "tables": all_reports,
             "tables_processed": len(all_reports),
             "issue_types_signaled": issue_count,
-        }
-        manifest_key = f"processed/_manifests/{run_id}.json"
-        client.put_object(
-            Bucket=bucket,
-            Key=manifest_key,
-            Body=json.dumps(manifest, ensure_ascii=False, indent=2, default=str).encode("utf-8"),
-            ContentType="application/json; charset=utf-8",
-        )
+        })
 
-        print(f"\nConcluído: {len(all_reports)} tabelas gravadas em processed/.")
-        print(f"Tipos de problemas sinalizados para revisão: {issue_count}")
-        print(f"Manifesto de qualidade: s3://{bucket}/{manifest_key}")
-        return 0
-    except NoCredentialsError:
-        print("Credenciais do MinIO não foram encontradas no .env.", file=sys.stderr)
-    except ClientError as error:
-        code = error.response.get("Error", {}).get("Code", "erro S3")
+        write_manifest(client, bucket, manifest_key, manifest)
+
         print(
-            f"Falha ao acessar o bucket '{bucket}' ({code}). Confira se o MinIO está ativo, "
-            "se o bucket existe e se as credenciais estão corretas.",
+            f"\nConcluído: {len(all_reports)} tabelas do lote "
+            f"{batch_id} gravadas em processed/batches/{batch_id}/."
+        )
+        print(f"Tipos de problemas sinalizados: {issue_count}")
+        print(f"Manifesto: s3://{bucket}/{manifest_key}")
+        return 0
+
+    except Exception as error:
+        manifest["status"] = "failed"
+        manifest["finished_at_utc"] = datetime.now(
+            timezone.utc
+        ).isoformat()
+        manifest["error"] = {
+            "type": type(error).__name__,
+            "message": str(error),
+        }
+
+        if client is not None:
+            try:
+                write_manifest(client, bucket, manifest_key, manifest)
+            except Exception as manifest_error:
+                print(
+                    "Também não foi possível atualizar o manifesto: "
+                    f"{manifest_error}",
+                    file=sys.stderr,
+                )
+
+        print(
+            f"Falha no processamento ({type(error).__name__}): {error}",
             file=sys.stderr,
         )
-    except BotoCoreError as error:
-        print(f"Falha de comunicação com o MinIO: {error}", file=sys.stderr)
-    except Exception as error:
-        print(f"Falha no processamento ({type(error).__name__}): {error}", file=sys.stderr)
-    return 1
+        return 1
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-

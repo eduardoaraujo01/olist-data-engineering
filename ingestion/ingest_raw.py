@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import uuid
 import hashlib
 import json
 import os
@@ -45,7 +46,6 @@ def inspect_file(path: Path) -> dict[str, object]:
 
     return {
         "name": path.name,
-        "object_key": f"raw/{path.name}",
         "rows": row_count,
         "size_bytes": path.stat().st_size,
         "sha256": digest.hexdigest(),
@@ -63,6 +63,28 @@ def source_files() -> list[Path]:
         raise FileNotFoundError(f"Faltam CSVs esperados em data/source: {names}")
 
     return [SOURCE_DIR / name for name in EXPECTED_FILES]
+
+def build_batch_id(files: list[dict[str, object]]) -> str:
+    """Create a stable identifier from the complete source file set."""
+    ordered_files = sorted(files, key=lambda item: str(item["name"]))
+    batch_description = [
+        {
+            "name": str(item["name"]),
+            "size_bytes": int(item["size_bytes"]),
+            "sha256": str(item["sha256"]),
+        }
+        for item in ordered_files
+    ]
+
+    canonical_content = json.dumps(
+        batch_description,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+    digest = hashlib.sha256(canonical_content).hexdigest()
+    return f"b_{digest}"
 
 
 def make_s3_client():
@@ -97,21 +119,74 @@ def object_has_same_checksum(client, bucket: str, item: dict[str, object]) -> bo
     saved_hash = response.get("Metadata", {}).get("sha256")
     return saved_hash == item["sha256"]
 
+def write_manifest(
+        client,
+        bucket: str,
+        object_key: str,
+        manifest: dict[str, object],
+) -> None:
+    body = json.dumps(
+        manifest,
+        ensure_ascii=False,
+        indent=2,
+    ).encode("utf-8")
+
+    client.put_object(
+        Bucket=bucket,
+        Key=object_key,
+        Body=body,
+        ContentType="application/json; charset=utf-8",
+    )
 
 def main() -> int:
     load_dotenv(PROJECT_ROOT / ".env")
     bucket = os.getenv("MINIO_BUCKET", "olist-data-lake")
 
+    run_id = uuid.uuid4().hex
+    started_at = datetime.now(timezone.utc)
+    client = None
+    manifest = None
+    manifest_key = None
+
     try:
         files = source_files()
         manifest_files = [inspect_file(path) for path in files]
+        batch_id = build_batch_id(manifest_files)
+
+        for item in manifest_files:
+            item["object_key"] = (
+                f"raw/batches/{batch_id}/{item['name']}"
+            )
+
+        manifest_key = (
+            f"control/manifests/ingestion/"
+            f"{batch_id}/{run_id}.json"
+        )
+
+        manifest = {
+            "contract_version": "2.0",
+            "batch_id": batch_id,
+            "run_id": run_id,
+            "stage": "ingestion",
+            "status": "running",
+            "started_at_utc": started_at.isoformat(),
+            "finished_at_utc": None,
+            "bucket": bucket,
+            "files": manifest_files,
+            "error": None,
+        }
+
         client = make_s3_client()
         client.head_bucket(Bucket=bucket)
+        write_manifest(client, bucket, manifest_key, manifest)
 
         for path, item in zip(files, manifest_files, strict=True):
             if object_has_same_checksum(client, bucket, item):
                 item["result"] = "unchanged"
-                print(f"[SEM ALTERAÇÃO] {path.name} — já existe com o mesmo SHA-256")
+                print(
+                    f"[SEM ALTERAÇÃO] {path.name} — "
+                    "já existe com o mesmo SHA-256 neste lote"
+                )
                 continue
 
             client.upload_file(
@@ -125,41 +200,82 @@ def main() -> int:
             )
             item["result"] = "uploaded"
             size_mb = int(item["size_bytes"]) / (1024 * 1024)
-            print(f"[ENVIADO] {path.name} — {size_mb:.1f} MiB, {item['rows']} linhas")
+            print(
+                f"[ENVIADO] {path.name} — "
+                f"{size_mb:.1f} MiB, {item['rows']} linhas"
+            )
 
-        batch_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
-        manifest = {
-            "batch_id": batch_id,
-            "ingested_at_utc": datetime.now(timezone.utc).isoformat(),
-            "bucket": bucket,
-            "files": manifest_files,
-        }
-        manifest_key = f"raw/_manifests/{batch_id}.json"
-        client.put_object(
-            Bucket=bucket,
-            Key=manifest_key,
-            Body=json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8"),
-            ContentType="application/json; charset=utf-8",
+        manifest["status"] = "succeeded"
+        manifest["finished_at_utc"] = datetime.now(timezone.utc).isoformat()
+        write_manifest(client, bucket, manifest_key, manifest)
+
+        print(f"\nConcluído: lote {batch_id}")
+        print(
+            f"Arquivos registrados: {len(manifest_files)}"
         )
-        print(f"\nConcluído: {len(manifest_files)} arquivos registrados em s3://{bucket}/raw/")
         print(f"Manifesto: s3://{bucket}/{manifest_key}")
         return 0
-    except (FileNotFoundError, ValueError) as error:
-        print(f"Erro de configuração ou origem: {error}", file=sys.stderr)
-    except NoCredentialsError:
-        print("Credenciais do MinIO não foram encontradas no .env.", file=sys.stderr)
-    except ClientError as error:
-        code = error.response.get("Error", {}).get("Code", "erro S3")
-        print(
-            f"Falha ao acessar o bucket '{bucket}' ({code}). Confira se o MinIO está ativo, "
-            "se o bucket existe e se as credenciais em .env estão corretas.",
-            file=sys.stderr,
-        )
-    except BotoCoreError as error:
-        print(f"Falha de comunicação com o MinIO: {error}", file=sys.stderr)
-    except csv.Error as error:
-        print(f"Erro ao ler um CSV: {error}", file=sys.stderr)
-    return 1
+
+    except (
+            FileNotFoundError,
+            ValueError,
+            NoCredentialsError,
+            ClientError,
+            BotoCoreError,
+            csv.Error,
+    ) as error:
+        if manifest is not None:
+            manifest["status"] = "failed"
+            manifest["finished_at_utc"] = datetime.now(
+                timezone.utc
+            ).isoformat()
+            manifest["error"] = {
+                "type": type(error).__name__,
+                "message": str(error),
+            }
+
+            if client is not None and manifest_key is not None:
+                try:
+                    write_manifest(
+                        client,
+                        bucket,
+                        manifest_key,
+                        manifest,
+                    )
+                except Exception as manifest_error:
+                    print(
+                        "Também não foi possível atualizar o manifesto: "
+                        f"{manifest_error}",
+                        file=sys.stderr,
+                    )
+
+        if isinstance(error, (FileNotFoundError, ValueError)):
+            print(
+                f"Erro de configuração ou origem: {error}",
+                file=sys.stderr,
+            )
+        elif isinstance(error, NoCredentialsError):
+            print(
+                "Credenciais do MinIO não foram encontradas no .env.",
+                file=sys.stderr,
+            )
+        elif isinstance(error, ClientError):
+            code = error.response.get("Error", {}).get("Code", "erro S3")
+            print(
+                f"Falha ao acessar o bucket '{bucket}' ({code}). "
+                "Confira se o MinIO está ativo, se o bucket existe "
+                "e se as credenciais em .env estão corretas.",
+                file=sys.stderr,
+            )
+        elif isinstance(error, BotoCoreError):
+            print(
+                f"Falha de comunicação com o MinIO: {error}",
+                file=sys.stderr,
+            )
+        else:
+            print(f"Erro ao ler um CSV: {error}", file=sys.stderr)
+
+        return 1
 
 
 if __name__ == "__main__":
