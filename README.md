@@ -78,7 +78,7 @@ As caixas de texto **Cobertura dos dados** e **Leituras para decisão** são int
 ## Escopo e limitações
 
 - A V1 é local: Docker Compose, MinIO, Python, Parquet, PostgreSQL e Metabase.
-- A primeira entrega da V2 implementa o fluxo batch local com identificação do lote, manifestos e carga no schema `analytics_v2`. Ela ainda não inclui Airflow, dbt, streaming, CI/CD, Terraform ou implantação em GCP.
+- A primeira entrega da V2 implementa o fluxo batch local com identificação do lote, manifestos e carga no schema `analytics_v2`. A V2 inclui orquestração local com Airflow e acionamento manual; dbt, streaming, CI/CD, Terraform e implantação em GCP permanecem fora do escopo.
 - Setembro e outubro de 2018 são meses parciais; a redução aparente no fim das séries não deve ser lida como queda de demanda ou mudança de operação.
 - A taxa de pontualidade descreve pedidos entregues elegíveis, não todos os pedidos.
 - A UF é a do cliente. Não há identificador de transportadora nem evidência de causa raiz.
@@ -97,6 +97,7 @@ As caixas de texto **Cobertura dos dados** e **Leituras para decisão** são int
 - [Processamento](docs/processed.md)
 - [Geração da camada curated](docs/curated.md)
 - [Warehouse](docs/warehouse.md)
+- [Airflow local](docs/airflow.md)
 - [Definições e validação das consultas](docs/analytics_queries.md)
 - [Consultas analíticas SQL](sql/analytics/01_orders_delivery.sql)
 - [Schema dimensional V2](sql/v2/01_create_analytics_v2.sql)
@@ -175,8 +176,12 @@ A carga V2 grava as quatro tabelas analíticas no schema `analytics_v2`: `dim_cu
 
 Os manifestos registram o status, as contagens e as verificações de cada etapa. Os avisos encontrados na qualidade dos dados devem ser avaliados antes do uso em decisões de negócio.
 
+## V2 — executar com Airflow
+
+O perfil opcional airflow orquestra ingestion → processing → curated → warehouse_load. A execução é manual e o Airflow transporta apenas o BATCH_ID; os arquivos permanecem no MinIO. Consulte [Airflow local](docs/airflow.md) para configurar e iniciar os serviços.
+
 ## Evoluções futuras
 
-A V1 concentra-se em pedidos e desempenho de entrega. A primeira entrega da V2 estabelece o processamento batch rastreável até o PostgreSQL. A política V2 já aplica limites e quarentena em `processed` e decisões de qualidade em `curated`. Evoluções futuras podem incluir orquestração com Airflow, transformações com dbt, governança e proteção de PII, streaming, CI/CD, Terraform e espelhamento de componentes para GCP.
+A V1 concentra-se em pedidos e desempenho de entrega. A primeira entrega da V2 estabelece o processamento batch rastreável até o PostgreSQL. A política V2 já aplica limites e quarentena em `processed` e decisões de qualidade em `curated`. A orquestração batch local agora usa Airflow; evoluções futuras podem incluir transformações com dbt, governança e proteção de PII, streaming, CI/CD, Terraform e espelhamento de componentes para GCP.
 
 A ampliação do modelo para itens, pagamentos e avaliações também é possível. Cada conjunto deve permanecer em uma fato com grão próprio; comparações entre fatos exigem agregação prévia a um grão comum.

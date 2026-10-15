@@ -113,3 +113,19 @@ COMMENT ON COLUMN analytics_v2.fact_orders.delivery_days IS
 
 COMMENT ON COLUMN analytics_v2.fact_orders.delivered_on_time IS
     'TRUE quando a entrega ocorreu até a data estimada; NULL quando não é possível comparar.';
+-- Índices nas colunas de referência para que reprocessamentos do lote
+-- localizem as linhas filhas ao excluir/recarregar dimensões.
+CREATE INDEX IF NOT EXISTS idx_fact_orders_batch_customer_key
+    ON analytics_v2.fact_orders (batch_id, customer_key);
+CREATE INDEX IF NOT EXISTS idx_fact_orders_batch_order_status_key
+    ON analytics_v2.fact_orders (batch_id, order_status_key);
+CREATE INDEX IF NOT EXISTS idx_fact_orders_batch_purchase_date_key
+    ON analytics_v2.fact_orders (batch_id, purchase_date_key);
+CREATE INDEX IF NOT EXISTS idx_fact_orders_batch_approved_date_key
+    ON analytics_v2.fact_orders (batch_id, approved_date_key);
+CREATE INDEX IF NOT EXISTS idx_fact_orders_batch_carrier_date_key
+    ON analytics_v2.fact_orders (batch_id, carrier_date_key);
+CREATE INDEX IF NOT EXISTS idx_fact_orders_batch_delivered_date_key
+    ON analytics_v2.fact_orders (batch_id, delivered_date_key);
+CREATE INDEX IF NOT EXISTS idx_fact_orders_batch_estimated_delivery_date_key
+    ON analytics_v2.fact_orders (batch_id, estimated_delivery_date_key);

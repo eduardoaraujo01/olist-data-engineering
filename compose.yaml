@@ -2,6 +2,7 @@ name: olist-local
 
 services:
   minio:
+    networks: [pipeline]
     image: olist-minio:RELEASE.2025-10-15T17-29-55Z
     build:
       context: ./docker/minio
@@ -26,6 +27,7 @@ services:
       start_period: 20s
 
   ingestion:
+    networks: [pipeline]
     image: olist-python-jobs:local
     profiles: ["jobs"]
     build:
@@ -44,6 +46,7 @@ services:
     command: ["python", "ingestion/ingest_raw.py"]
 
   processing:
+    networks: [pipeline]
     image: olist-python-jobs:local
     profiles: ["jobs"]
     build:
@@ -60,6 +63,7 @@ services:
     command: ["python", "processing/build_processed.py"]
 
   curated:
+    networks: [pipeline]
     image: olist-python-jobs:local
     profiles: ["jobs"]
     build:
@@ -76,6 +80,7 @@ services:
     command: ["python", "processing/build_curated.py"]
 
   warehouse_load:
+    networks: [pipeline]
     image: olist-python-jobs:local
     profiles: ["jobs"]
     build:
@@ -99,6 +104,7 @@ services:
     command: ["python", "warehouse/load_postgres_v2.py"]
 
   postgres:
+    networks: [pipeline]
     image: postgres:17.11-alpine3.24
     restart: unless-stopped
     environment:
@@ -119,6 +125,7 @@ services:
       start_period: 10s
 
   metabase:
+    networks: [pipeline]
     image: metabase/metabase:v0.63.18.x
     restart: unless-stopped
     depends_on:
@@ -138,8 +145,156 @@ services:
       retries: 10
       start_period: 60s
 
+  airflow-db:
+    image: postgres:17.11-alpine3.24
+    profiles: ["airflow"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: airflow
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD:?Configure AIRFLOW_DB_PASSWORD in .env}
+    volumes:
+      - airflow_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [pipeline]
+
+  airflow-redis:
+    image: redis:7.4-alpine
+    profiles: ["airflow"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [pipeline]
+
+  airflow-init:
+    image: olist-airflow:3.3.2
+    build:
+      context: .
+      dockerfile: docker/airflow/Dockerfile
+    profiles: ["airflow"]
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      airflow-redis:
+        condition: service_healthy
+    environment: &airflow-environment
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-api-server:8080/execution/
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD:?Configure AIRFLOW_DB_PASSWORD in .env}@airflow-db/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:${AIRFLOW_DB_PASSWORD:?Configure AIRFLOW_DB_PASSWORD in .env}@airflow-db/airflow
+      AIRFLOW__CELERY__BROKER_URL: redis://:@airflow-redis:6379/0
+      AIRFLOW__CELERY__WORKER_CONCURRENCY: "1"
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?Configure AIRFLOW_FERNET_KEY in .env}
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: admin:admin
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: /opt/airflow/auth/passwords.json
+      AIRFLOW__API__SECRET_KEY: ${AIRFLOW_API_SECRET_KEY:?Configure AIRFLOW_API_SECRET_KEY in .env}
+      AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Configure MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Configure MINIO_ROOT_PASSWORD in .env}
+      MINIO_BUCKET: ${MINIO_BUCKET:-olist-data-lake}
+      POSTGRES_DB: ${POSTGRES_DB:-olist_analytics}
+      POSTGRES_USER: ${POSTGRES_USER:-olist}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD in .env}
+      OLIST_SOURCE_DIR: "${OLIST_SOURCE_DIR:-C:/Users/Duh/Documents/olist-data-engeneering/data/source}"
+      OLIST_DOCKER_NETWORK: olist-local_pipeline
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags:ro
+      - airflow_logs:/opt/airflow/logs
+      - airflow_auth:/opt/airflow/auth
+    user: "${AIRFLOW_UID:-50000}:0"
+    networks: [pipeline]
+    command: ["bash", "-c", "airflow db migrate"]
+
+  airflow-api-server:
+    image: olist-airflow:3.3.2
+    profiles: ["airflow"]
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *airflow-environment
+      AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:?Configure AIRFLOW_JWT_SECRET in .env}
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags:ro
+      - airflow_logs:/opt/airflow/logs
+      - airflow_auth:/opt/airflow/auth
+    ports:
+      - "127.0.0.1:8080:8080"
+    user: "${AIRFLOW_UID:-50000}:0"
+    networks: [pipeline]
+    command: ["api-server"]
+
+  airflow-scheduler:
+    image: olist-airflow:3.3.2
+    profiles: ["airflow"]
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *airflow-environment
+      AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:?Configure AIRFLOW_JWT_SECRET in .env}
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags:ro
+      - airflow_logs:/opt/airflow/logs
+      - airflow_auth:/opt/airflow/auth
+    user: "${AIRFLOW_UID:-50000}:0"
+    networks: [pipeline]
+    command: ["scheduler"]
+
+  airflow-dag-processor:
+    image: olist-airflow:3.3.2
+    profiles: ["airflow"]
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    environment: *airflow-environment
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags:ro
+      - airflow_logs:/opt/airflow/logs
+      - airflow_auth:/opt/airflow/auth
+    user: "${AIRFLOW_UID:-50000}:0"
+    networks: [pipeline]
+    command: ["dag-processor"]
+
+  airflow-worker:
+    image: olist-airflow:3.3.2
+    profiles: ["airflow"]
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      airflow-redis:
+        condition: service_healthy
+    environment: *airflow-environment
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags:ro
+      - airflow_logs:/opt/airflow/logs
+      - airflow_auth:/opt/airflow/auth
+      - /var/run/docker.sock:/var/run/docker.sock
+    user: "${AIRFLOW_UID:-50000}:0"
+    networks: [pipeline]
+    command: ["celery", "worker"]
+
 volumes:
   minio_data:
   postgres_data:
   metabase_data:
+  airflow_db_data:
+  airflow_logs:
+  airflow_auth:
+
+networks:
+  pipeline:
+    name: olist-local_pipeline
 

@@ -106,6 +106,6 @@ As tabelas da V2 devem registrar `batch_id`. Na tabela de fatos de pedidos, uma 
 
 Uma reexecução no PostgreSQL deve ocorrer em transação e afetar somente o lote informado. Ela não deve excluir nem substituir dados de outros lotes.
 
-## Fora do escopo deste entregável
+## Fora do escopo da integração local
 
-Esta etapa não inclui Airflow ou Composer, Kafka ou Pub/Sub, processamento incremental, Terraform, CI/CD ou publicação na GCP. Esses componentes podem ser acrescentados em entregáveis posteriores, usando o contrato de lote definido aqui.
+A orquestração local do fluxo é feita pelo Airflow com acionamento manual e XCom somente para o batch_id. Composer, Kafka ou Pub/Sub, processamento incremental, Terraform, CI/CD e publicação na GCP permanecem fora deste entregável. Esses componentes podem ser acrescentados em entregáveis posteriores, usando o contrato de lote definido aqui.

@@ -3,3 +3,8 @@
 /data/source/*.csv
 /.env
 /docs/portfolio_spec.md
+
+# Airflow local runtime
+/airflow/logs/
+/airflow/config/
+/airflow/plugins/

@@ -214,6 +214,7 @@ def main() -> int:
             f"Arquivos registrados: {len(manifest_files)}"
         )
         print(f"Manifesto: s3://{bucket}/{manifest_key}")
+        print(batch_id, flush=True)
         return 0
 
     except (
