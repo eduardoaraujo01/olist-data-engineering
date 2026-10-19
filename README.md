@@ -78,7 +78,7 @@ As caixas de texto **Cobertura dos dados** e **Leituras para decisão** são int
 ## Escopo e limitações
 
 - A V1 é local: Docker Compose, MinIO, Python, Parquet, PostgreSQL e Metabase.
-- A primeira entrega da V2 implementa o fluxo batch local com identificação do lote, manifestos e carga no schema `analytics_v2`. A V2 inclui orquestração local com Airflow e acionamento manual; dbt, streaming, CI/CD, Terraform e implantação em GCP permanecem fora do escopo.
+- A primeira entrega da V2 implementa o fluxo batch local com identificação do lote, manifestos e carga no schema `analytics_v2`. A V2 inclui orquestração local com Airflow e acionamento manual; dbt, streaming, Terraform e implantação em GCP permanecem fora do escopo.
 - Setembro e outubro de 2018 são meses parciais; a redução aparente no fim das séries não deve ser lida como queda de demanda ou mudança de operação.
 - A taxa de pontualidade descreve pedidos entregues elegíveis, não todos os pedidos.
 - A UF é a do cliente. Não há identificador de transportadora nem evidência de causa raiz.
@@ -182,6 +182,40 @@ O perfil opcional airflow orquestra ingestion → processing → curated → war
 
 ## Evoluções futuras
 
-A V1 concentra-se em pedidos e desempenho de entrega. A primeira entrega da V2 estabelece o processamento batch rastreável até o PostgreSQL. A política V2 já aplica limites e quarentena em `processed` e decisões de qualidade em `curated`. A orquestração batch local agora usa Airflow; evoluções futuras podem incluir transformações com dbt, governança e proteção de PII, streaming, CI/CD, Terraform e espelhamento de componentes para GCP.
+A V1 concentra-se em pedidos e desempenho de entrega. A primeira entrega da V2 estabelece o processamento batch rastreável até o PostgreSQL. A política V2 já aplica limites e quarentena em `processed` e decisões de qualidade em `curated`. A orquestração batch local agora usa Airflow; evoluções futuras podem incluir transformações com dbt, governança e proteção de PII, streaming, Terraform e espelhamento de componentes para GCP.
 
 A ampliação do modelo para itens, pagamentos e avaliações também é possível. Cada conjunto deve permanecer em uma fato com grão próprio; comparações entre fatos exigem agregação prévia a um grão comum.
+
+## Testes automatizados e CI
+
+Use Python 3.12 e Docker Desktop com o mecanismo Linux ativo. No PowerShell:
+
+```powershell
+Set-Location C:\Users\Duh\Documents\olist-data-engeneering
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\python.exe -m ruff check .
+.\.venv\Scripts\python.exe ci/validate.py compose
+.\.venv\Scripts\python.exe ci/validate.py dag
+```
+
+No Linux, use `python3.12 -m venv .venv` e substitua `.\.venv\Scripts\python.exe` por `.venv/bin/python`.
+
+`requirements-dev.txt` instala as dependências do pipeline e fixa pytest e Ruff. `pyproject.toml` configura descoberta dos testes e verificações estáticas de erros de sintaxe e construções inválidas; não impõe uma reformatação geral do projeto.
+
+`tests/test_batch.py` cobre identidade do lote, mudanças no conteúdo/metadados relevantes, CSV com BOM/campo multilinha e rejeição de origem incompleta. Os arquivos de teste são criados em pasta temporária, sem tocar em `data/source`.
+
+`tests/test_quality.py` usa a política JSON real e relatórios sintéticos para verificar aprovação, bloqueio por chaves/referências/regra desconhecida, avisos, modo observe, limite exato da quarentena, união de linhas entre regras, máscaras inválidas e separação com rastreabilidade. Não compara horários de execução.
+
+`ci/validate.py compose` usa valores fictícios e `--env-file` apontando para o dispositivo vazio, ignorando o `.env`. Valida todos os perfis com `config --quiet`; não sobe serviços nem imprime configuração/segredos.
+
+`ci/validate.py dag` constrói a imagem do Dockerfile Airflow existente (exige internet no build), importa a DAG com Airflow e provider reais e executa `ci/check_dag.py` em contêiner temporário sem rede. Confere as quatro tarefas, dependências, acionamento manual, exclusão de execuções concorrentes e renderização do BATCH_ID via XCom. Não executa operadores, inicia banco, monta dados reais ou carrega credenciais locais.
+
+`.github/workflows/ci.yml` executa essas mesmas verificações em cada push e pull request, com Python 3.12, permissões apenas de leitura e dois jobs: `tests` e `dag`. A CI não executa ingestão, processamento ou carga real; também não prova integração com MinIO/PostgreSQL nem o resultado analítico completo.
+
+No GitHub, abra **Actions → Pipeline checks → execução → job → etapa**. Verde indica que as verificações passaram; vermelho indica falha. Leia a primeira etapa com erro: pytest mostra teste/assertiva, Ruff mostra arquivo/linha e Docker mostra erro de configuração, build ou importação. Em pull requests, o mesmo resultado aparece em **Checks**. Uma execução manual anterior da DAG não substitui esses checks.
+
+`tests/test_curated.py` verifica o bloqueio de publicação de um pedido órfão: executa as transformações e a avaliação reais, substitui apenas as fronteiras de I/O, confirma retorno de erro, manifesto failed/blocked e nenhuma publicação Parquet. O carregamento de `.env` é desativado nesse teste.
+
+Veja a [explicação por arquivo e o código completo dos testes e configurações](docs/testing_ci.md).

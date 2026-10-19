@@ -8,3 +8,8 @@
 /airflow/logs/
 /airflow/config/
 /airflow/plugins/
+
+# Python test tooling
+__pycache__/
+.pytest_cache/
+.ruff_cache/
