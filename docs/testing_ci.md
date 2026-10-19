@@ -370,4 +370,3 @@ jobs:
       - run: python ci/validate.py dag
 
 ```
-
